@@ -1,0 +1,8 @@
+[package]
+name = "rbg"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rbg"
+path = "src/main.rs"
