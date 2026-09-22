@@ -2,42 +2,37 @@
 
 ## Position
 
-Unit 2 of docs/roadmap.md is done. The binary `rbg` has the
-subcommands `probe` and `mem`. The ioctl plumbing moved to
-src/kfd.rs: open, ioctl, mmap and munmap are declared there, and
-the ioctl structs and call wrappers live there. `rbg mem`
-reserves a 1 MiB VA, ALLOCs a GTT buffer at that VA, maps it to
-the GPU, mmaps the host view at the same VA, writes a u32 index
-pattern, munmaps, mmaps again, and checks every value. Teardown
-(munmap, UNMAP, FREE) runs even on a verify failure.
+Unit 3b: done. `rbg queue` builds an AQL queue and a SIGNAL event
+on top of `Kfd` and `Buffer`, prints their ids, and tears
+everything down through Drop. Every kernel resource is a type
+with Drop; every syscall returns Result. The EOP buffer fix for
+the 2026-09-22 MES hangs is in, see docs/queue.md.
 
-## Verified on this machine, 2026-09-21
+## Verified on this machine, 2026-09-22
 
-1. `cargo fmt --check` and `cargo clippy --all-targets` (zero
-   warnings) pass. `tools/doclint` and `awk 'length > 80'` over
-   src/ pass.
-2. `rbg probe` exits 0 and prints kfd version 1.22, gpu_id 3750,
-   gfx_target_version 110501. `rbg probe --acquire` adds
-   `acquire_vm: ok`.
-3. `rbg mem` exits 0 and prints, for example:
-
-```
-handle: 16106127360000
-mmap_offset: 5190475776
-va: 0x7feb99027000
-verify: 262144 ok
-```
-
-4. `rbg mem` five times in a row: all five exit 0.
-5. With one expected value broken, it prints `verify: 1 of
-   262144 values wrong`, exit 1, and the teardown still ran.
-   The change is reverted.
+1. Step 1, by the agent: `rbg probe` prints kfd version 1.22,
+   gpu_id 3750, gfx 110501, exit 0. `rbg mem` verifies
+   262144 values, exit 0. Both unchanged from unit 2.
+2. Step 4, by the agent: `cargo fmt --check` passes,
+   `cargo clippy --all-targets` has zero warnings, doclint
+   passes, no line over 80 columns in docs or src.
+3. Step 2, by a person, server stopped: five `rbg queue` runs
+   each printed `queue_id: 0`,
+   `doorbell_offset: 0xc3a9800000000000`, `event_id: 1`,
+   `event_slot_index: 1`, `rptr: 0`, exit 0. Zero "GPU reset("
+   in the kernel log over the window.
+4. Step 3, by a person, server up: `rbg queue --cwsr-short`
+   printed `rbg: ioctl CREATE_QUEUE: Invalid argument (os error
+   22)`, exit 1. mem_info_gtt_used 35313598464 before,
+   35313606656 after: 8 KiB of background drift, the same as
+   five clean runs showed in unit 2. No leak.
 
 ## Stale
 
-None. The host-view fd finding is now in docs/floor.md.
+None. The create_queue field name is fixed in docs/queue.md.
 
 ## Exact next step
 
-Unit 3: build a queue. Allocate the ring, create the AQL compute
-queue, map the doorbell page and the event signal page.
+Unit 4: dispatch nothing. Assemble a kernel that writes one
+constant to one address, dispatch one workgroup, wait on the
+signal. Prompt not yet written. GPU steps stay with a person.

@@ -1,0 +1,55 @@
+#!/bin/sh
+# drive - run one unit to completion across pi handoffs.
+# Usage: tools/drive UNIT [MAX_SESSIONS]   e.g. tools/drive 3b 8
+# Each session is interactive pi on docs/prompts/unit-UNIT.md, so
+# the thinking trace is on screen. The budget extension forces a
+# handoff at 40k tokens and shuts pi down; this loop starts the
+# next session. It stops when docs/STATUS.md carries the line
+# "Unit UNIT: done", or "Unit UNIT: ready for GPU test" or
+# "Unit UNIT: blocked" (a person must act, then rerun drive), or
+# after MAX_SESSIONS, or after two sessions in a row that leave
+# STATUS.md unchanged. Sessions are in ~/.pi.
+unit=$1; max=${2:-8}
+[ -n "$unit" ] || { echo "usage: tools/drive UNIT [MAX]" >&2; exit 2; }
+prompt=docs/prompts/unit-$unit.md
+[ -f "$prompt" ] || { echo "no $prompt" >&2; exit 2; }
+url=${MENTAT_LLM_URL:-http://localhost:8090}
+wait_server() {
+  n=0
+  until [ "$(curl -s -m 3 -o /dev/null -w '%{http_code}' "$url/health")" \
+          = 200 ]; do
+    n=$((n + 1))
+    [ "$n" -gt 120 ] && { echo "== drive: server not up" >&2; exit 1; }
+    [ "$n" -eq 1 ] && echo "== drive: waiting for $url/health"
+    sleep 5
+  done
+}
+stale=0
+i=1
+while [ "$i" -le "$max" ]; do
+  wait_server
+  before=$(cksum docs/STATUS.md 2>/dev/null)
+  echo "== drive: unit $unit session $i/$max $(date +%H:%M)"
+  pi @"$prompt" "Do unit $unit."
+  if grep -qE "^Unit $unit: done" docs/STATUS.md; then
+    echo "== drive: unit $unit done after $i session(s)"; exit 0
+  fi
+  if grep -qE "^Unit $unit: (ready for GPU test|blocked)" docs/STATUS.md
+  then
+    grep -E "^Unit $unit:" docs/STATUS.md
+    echo "== drive: a person must act, then rerun tools/drive $unit"
+    exit 3
+  fi
+  after=$(cksum docs/STATUS.md 2>/dev/null)
+  if [ "$before" = "$after" ]; then
+    stale=$((stale + 1))
+    if [ "$stale" -ge 2 ]; then
+      echo "== drive: no progress twice, stop" >&2; exit 1
+    fi
+  else
+    stale=0
+  fi
+  i=$((i + 1))
+done
+echo "== drive: unit $unit not done after $max sessions" >&2
+exit 1
