@@ -34,12 +34,14 @@ The layers, in dependency order. Each layer uses only the one below.
 
 ## What exists today
 
-The binary `rbg` (src/main.rs) talks to the kfd driver: it prints
-the uapi version, gpu_id and gfx target, and can call ACQUIRE_VM.
+The binary `rbg` (src/main.rs, src/kfd.rs) talks to the kfd
+driver: it prints the uapi version, gpu_id and gfx target, can
+call ACQUIRE_VM, and can allocate a 1 MiB GTT buffer, map it to
+the GPU, and verify a pattern written through the host view.
 Beyond it, the repo holds docs and `tools/doclint` only.
 
 ## What next
 
 Read docs/floor.md for the interface all of this stands on,
 docs/language.md for the host language, and docs/roadmap.md for the
-first five build units. Unit 1 is done; unit 2 is next.
+first five build units. Units 1 and 2 are done; unit 3 is next.
