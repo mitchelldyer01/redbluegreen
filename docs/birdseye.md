@@ -39,8 +39,9 @@ driver: it prints the uapi version, gpu_id and gfx target, can
 call ACQUIRE_VM, can allocate a 1 MiB GTT buffer, map it to the
 GPU, and verify a pattern through the host view, and can build
 an AQL compute queue and a SIGNAL event on top of it and tear
-both down. Beyond it, the repo holds docs and `tools/doclint`
-only.
+both down, and can dispatch a kernel (kernels/store42, built by
+`tools/asm` from src/kernels/) and wait on its signal. Beyond it,
+the repo holds docs, `tools/doclint`, `tools/asm`, `tools/drive`.
 
 ## What next
 

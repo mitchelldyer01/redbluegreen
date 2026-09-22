@@ -2,37 +2,32 @@
 
 ## Position
 
-Unit 3b: done. `rbg queue` builds an AQL queue and a SIGNAL event
-on top of `Kfd` and `Buffer`, prints their ids, and tears
-everything down through Drop. Every kernel resource is a type
-with Drop; every syscall returns Result. The EOP buffer fix for
-the 2026-09-22 MES hangs is in, see docs/queue.md.
+Unit 4: done. `rbg dispatch` runs kernels/store42 on one
+workgroup: the target reads 42 and the completion signal reaches
+0. The fix that made it work is COHERENT on every CP-visible
+buffer, docs/dispatch.md. First code ran on this GPU 2026-09-22.
 
 ## Verified on this machine, 2026-09-22
 
-1. Step 1, by the agent: `rbg probe` prints kfd version 1.22,
-   gpu_id 3750, gfx 110501, exit 0. `rbg mem` verifies
-   262144 values, exit 0. Both unchanged from unit 2.
-2. Step 4, by the agent: `cargo fmt --check` passes,
-   `cargo clippy --all-targets` has zero warnings, doclint
-   passes, no line over 80 columns in docs or src.
-3. Step 2, by a person, server stopped: five `rbg queue` runs
-   each printed `queue_id: 0`,
-   `doorbell_offset: 0xc3a9800000000000`, `event_id: 1`,
-   `event_slot_index: 1`, `rptr: 0`, exit 0. Zero "GPU reset("
-   in the kernel log over the window.
-4. Step 3, by a person, server up: `rbg queue --cwsr-short`
-   printed `rbg: ioctl CREATE_QUEUE: Invalid argument (os error
-   22)`, exit 1. mem_info_gtt_used 35313598464 before,
-   35313606656 after: 8 KiB of background drift, the same as
-   five clean runs showed in unit 2. No leak.
+1. By the agent: `tools/asm store42` byte-identical; `rbg probe`
+   and `rbg mem` exit 0; fmt, clippy, doclint, 80 columns clean.
+2. By a person, server stopped, after the COHERENT fix: five
+   `rbg dispatch` runs each print `target[0]: 42`, `signal: 0`,
+   `dispatch: ok`, exit 0. No reset, no flicker.
+3. `rbg dispatch --no-doorbell` also prints 42, 0, ok, exit 0:
+   the CP polls the write pointer. GTT 998191104 before,
+   998203392 after: 12 KiB drift, no leak.
+4. Before the fix, five runs: target 42 but signal 1,
+   DESTROY_QUEUE timed out, GPU reset each time.
 
 ## Stale
 
-None. The create_queue field name is fixed in docs/queue.md.
+None. One note: the unit 4 prompt says to cmp against
+"the committed" kernel files, but kernels/, tools/asm and
+src/kernels/ are still untracked from unit 3b.
 
 ## Exact next step
 
-Unit 4: dispatch nothing. Assemble a kernel that writes one
-constant to one address, dispatch one workgroup, wait on the
-signal. Prompt not yet written. GPU steps stay with a person.
+Unit 5: a kernel that matters. Elementwise add of two large
+float buffers across many workgroups; measure bandwidth. Prompt
+not yet written.

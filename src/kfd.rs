@@ -7,6 +7,8 @@
 use std::ffi::{c_char, CString};
 use std::fmt;
 use std::io;
+use std::sync::atomic::{fence, Ordering};
+use std::time::{Duration, Instant};
 
 extern "C" {
     fn open(path: *const c_char, flags: i32) -> i32;
@@ -43,6 +45,10 @@ const IOC_WRITE: u64 = 1;
 /// ALLOC flags.
 pub const ALLOC_GTT: u32 = 1 << 1;
 const ALLOC_EXECUTABLE: u32 = 1 << 30;
+/// Fine-grained: the CP's own reads, atomics and EOP path see
+/// the same bytes the CPU does. ROCr sets it on every buffer the
+/// CP touches except EOP and CWSR (2026-09-22, unit 4).
+pub const ALLOC_COHERENT: u32 = 1 << 26;
 pub const ALLOC_WRITABLE: u32 = 1 << 31;
 
 const QUEUE_TYPE_COMPUTE_AQL: u32 = 2;
@@ -545,6 +551,87 @@ impl<'a> Drop for Buffer<'a> {
     }
 }
 
+/// A kernel object: descriptor plus code, in one Buffer.
+///
+/// Bytes 0..64 hold the descriptor, the code starts at byte 256.
+/// The descriptor's entry offset (i64 at 16) is patched to 256;
+/// the assembler leaves it at zero. docs/dispatch.md.
+pub struct Kernel<'a> {
+    buf: Buffer<'a>,
+}
+
+impl<'a> Kernel<'a> {
+    /// Load store42 from the two files tools/asm wrote.
+    pub fn new(kfd: &'a Kfd) -> Result<Kernel<'a>> {
+        let desc: &[u8; 64] = include_bytes!("../kernels/store42.kd");
+        let code: &[u8] = include_bytes!("../kernels/store42.text");
+        // 256 plus the code, rounded up to a whole page.
+        let size = (256 + code.len() as u64 + 4095) & !4095;
+        let flags =
+            ALLOC_GTT | ALLOC_WRITABLE | ALLOC_EXECUTABLE | ALLOC_COHERENT;
+        let mut buf = Buffer::new(kfd, size, flags)?;
+        let b = buf.as_slice_mut::<u8>();
+        b[..64].copy_from_slice(desc);
+        b[256..256 + code.len()].copy_from_slice(code);
+        b[16..24].copy_from_slice(&256i64.to_le_bytes());
+        Ok(Kernel { buf })
+    }
+
+    /// The va the packet's kernel_object field takes.
+    pub fn object(&self) -> u64 {
+        self.buf.va as u64
+    }
+}
+
+/// A dispatch signal: the 64-byte struct in its own Buffer.
+///
+/// kind 1 (USER) at 0, value at 8. Set to 1 in new; the CP
+/// decrements it to 0 when the packet retires. We poll, no
+/// Event. docs/dispatch.md.
+pub struct Signal<'a> {
+    buf: Buffer<'a>,
+}
+
+impl<'a> Signal<'a> {
+    /// Allocate zero-filled, then set kind 1 and value 1.
+    pub fn new(kfd: &'a Kfd) -> Result<Signal<'a>> {
+        let flags = ALLOC_GTT | ALLOC_WRITABLE | ALLOC_COHERENT;
+        let mut buf = Buffer::new(kfd, 4096, flags)?;
+        let b = buf.as_slice_mut::<u8>();
+        for x in b.iter_mut() {
+            *x = 0;
+        }
+        b[0..8].copy_from_slice(&1i64.to_le_bytes()); // kind USER
+        b[8..16].copy_from_slice(&1i64.to_le_bytes()); // value
+        Ok(Signal { buf })
+    }
+
+    /// The va the packet's completion_signal field takes.
+    pub fn va(&self) -> u64 {
+        self.buf.va as u64
+    }
+
+    /// The value field, by a volatile read.
+    pub fn value(&self) -> i64 {
+        unsafe { std::ptr::read_volatile(self.buf.va.add(8) as *const i64) }
+    }
+
+    /// Poll the value every 100 us. Ok at 0, else an error
+    /// naming "signal timeout".
+    pub fn wait(&self, timeout: Duration) -> Result<()> {
+        let start = Instant::now();
+        loop {
+            if self.value() == 0 {
+                return Ok(());
+            }
+            if start.elapsed() > timeout {
+                return Err(Error::other("signal wait", "signal timeout"));
+            }
+            std::thread::sleep(Duration::from_micros(100));
+        }
+    }
+}
+
 /// An AQL compute queue.
 ///
 /// Owns the ring, write pointer, read pointer, CWSR and EOP
@@ -567,6 +654,8 @@ pub struct Queue<'a> {
     pub doorbell: *mut u8,
     pub doorbell_offset: u64,
     pub queue_id: u32,
+    /// The index of the next free ring slot.
+    write_index: u64,
 }
 
 impl<'a> Queue<'a> {
@@ -582,12 +671,12 @@ impl<'a> Queue<'a> {
         // AQL_QUEUE_MEM: on this kernel that flag makes the BO
         // un-mappable on the render fd, so no host view.
         let flags_w = ALLOC_GTT | ALLOC_WRITABLE;
-        let flags_ring = flags_w | ALLOC_EXECUTABLE;
-        let ring = Buffer::new(kfd, ring_size, flags_ring)?;
-        let write_ptr = Buffer::new(kfd, 4096, flags_w)?;
-        let read_ptr = Buffer::new(kfd, 4096, flags_w)?;
+        let flags_fine = flags_w | ALLOC_COHERENT;
+        let ring = Buffer::new(kfd, ring_size, flags_fine | ALLOC_EXECUTABLE)?;
+        let write_ptr = Buffer::new(kfd, 4096, flags_fine)?;
+        let read_ptr = Buffer::new(kfd, 4096, flags_fine)?;
         let cwsr = Buffer::new(kfd, cwsr_bo_size, flags_w)?;
-        let eop = Buffer::new(kfd, EOP_SIZE, flags_w)?;
+        let eop = Buffer::new(kfd, EOP_SIZE, flags_w | ALLOC_EXECUTABLE)?;
         let mut arg = KfdCreateQueue {
             ring_base_address: ring.va as u64,
             write_pointer_address: write_ptr.va as u64,
@@ -623,7 +712,7 @@ impl<'a> Queue<'a> {
             (off & !DOORBELL_MASK) as i64,
             "mmap doorbell",
         )?;
-        Ok(Queue {
+        let mut q = Queue {
             kfd,
             ring,
             write_ptr,
@@ -633,7 +722,58 @@ impl<'a> Queue<'a> {
             doorbell,
             doorbell_offset: off,
             queue_id: arg.queue_id,
-        })
+            write_index: 0,
+        };
+        q.init_ring();
+        Ok(q)
+    }
+
+    /// Write header 1 (INVALID) into every ring slot. The CP
+    /// waits on an INVALID header and never runs one.
+    pub fn init_ring(&mut self) {
+        let slots = self.ring.size / 64;
+        let b = self.ring.as_slice_mut::<u8>();
+        for i in 0..slots {
+            let off = (i * 64) as usize;
+            b[off..off + 2].copy_from_slice(&1u16.to_le_bytes());
+        }
+    }
+
+    /// Steps 2 to 4 of the write order in docs/dispatch.md:
+    /// the packet body, the header last, the write pointer, the
+    /// doorbell. A release fence before the header store and
+    /// before the doorbell store.
+    pub fn dispatch(&mut self, packet: &[u8; 64], ring_doorbell: bool) {
+        let index = self.write_index;
+        let slot = index % (self.ring.size / 64);
+        let base = (slot * 64) as usize;
+        let b = self.ring.as_slice_mut::<u8>();
+        // Step 2, first half: the body, without the header.
+        b[base + 4..base + 64].copy_from_slice(&packet[4..64]);
+        // Step 2, second half: the header, last, as one u32
+        // store of header | setup << 16.
+        let h = u16::from_le_bytes([packet[0], packet[1]]) as u32
+            | (u16::from_le_bytes([packet[2], packet[3]]) as u32) << 16;
+        fence(Ordering::Release);
+        unsafe {
+            std::ptr::write_volatile(
+                (self.ring.va as *mut u32).add(base / 4),
+                h,
+            );
+        }
+        // Step 3: index + 1 into the write-pointer Buffer, u64.
+        let w = self.write_ptr.as_slice_mut::<u8>();
+        w[0..8].copy_from_slice(&(self.write_index + 1).to_le_bytes());
+        self.write_index += 1;
+        if ring_doorbell {
+            // Step 4: the packet's own index (not its slot) into
+            // the doorbell. This doorbell write is the one place
+            // in this program that starts the hardware.
+            fence(Ordering::Release);
+            unsafe {
+                std::ptr::write_volatile(self.doorbell as *mut u64, index);
+            }
+        }
     }
 }
 

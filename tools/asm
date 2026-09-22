@@ -1,0 +1,22 @@
+#!/bin/sh
+# asm - assemble src/kernels/NAME.s for gfx1151 into two raw files:
+# kernels/NAME.text (machine code) and kernels/NAME.kd (the 64-byte
+# kernel descriptor the assembler built from .amdhsa_ directives).
+# Build-time dependency: llvm-mc and llvm-objcopy. Nothing at run
+# time. The kd's entry offset (bytes 16..24) is a relocation left
+# at zero; rbg patches it to the code offset in its own layout.
+set -e
+name=$1
+[ -n "$name" ] || { echo "usage: tools/asm NAME" >&2; exit 2; }
+src=src/kernels/$name.s
+[ -f "$src" ] || { echo "no $src" >&2; exit 2; }
+tmp=$(mktemp)
+llvm-mc -triple=amdgcn-amd-amdhsa -mcpu=gfx1151 -filetype=obj \
+  "$src" -o "$tmp"
+llvm-objcopy -O binary --only-section=.text "$tmp" "kernels/$name.text"
+llvm-objcopy -O binary --only-section=.rodata "$tmp" "kernels/$name.kd"
+rm -f "$tmp"
+[ "$(wc -c < "kernels/$name.kd")" -eq 64 ] || {
+  echo "kd is not 64 bytes" >&2; exit 1; }
+echo "kernels/$name.text $(wc -c < "kernels/$name.text") bytes"
+echo "kernels/$name.kd 64 bytes"
