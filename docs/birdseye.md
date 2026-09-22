@@ -40,12 +40,13 @@ call ACQUIRE_VM, can allocate a 1 MiB GTT buffer, map it to the
 GPU, and verify a pattern through the host view, and can build
 an AQL compute queue and a SIGNAL event on top of it and tear
 both down, and can dispatch a kernel (kernels/store42, built by
-`tools/asm` from src/kernels/) and wait on its signal. Beyond it,
-the repo holds docs, `tools/doclint`, `tools/asm`, `tools/drive`.
+`tools/asm` from src/kernels/) and wait on its signal, and can run
+`rbg add N` to add two float buffers with kernels/vadd, time it,
+and verify every element on the CPU. Beyond it, the repo holds
+docs, `tools/doclint`, `tools/asm`, `tools/drive`.
 
 ## What next
 
-Read docs/floor.md for the interface all of this stands on,
+Read docs/lessons.md first. Then docs/floor.md for the interface,
 docs/language.md for the host language, and docs/roadmap.md for the
-first five build units. Units 1, 2 and 3a are done; unit 3b is
-in progress.
+first five build units. Units 1 to 4 are done; unit 5 is next.

@@ -2,32 +2,25 @@
 
 ## Position
 
-Unit 4: done. `rbg dispatch` runs kernels/store42 on one
-workgroup: the target reads 42 and the completion signal reaches
-0. The fix that made it work is COHERENT on every CP-visible
-buffer, docs/dispatch.md. First code ran on this GPU 2026-09-22.
+Unit 5: done. `rbg add` measures 225 GB/s at 64M elements with
+coarse data, 222 GB/s at 16M with fine data. docs/lessons.md has
+the table, the three rules the unit paid for, and two open items:
+the queue does not survive a pause, and 64M of fine data hangs.
 
-## Verified on this machine, 2026-09-22
+## Verified on this machine, 2026-09-22, server stopped
 
-1. By the agent: `tools/asm store42` byte-identical; `rbg probe`
-   and `rbg mem` exit 0; fmt, clippy, doclint, 80 columns clean.
-2. By a person, server stopped, after the COHERENT fix: five
-   `rbg dispatch` runs each print `target[0]: 42`, `signal: 0`,
-   `dispatch: ok`, exit 0. No reset, no flicker.
-3. `rbg dispatch --no-doorbell` also prints 42, 0, ok, exit 0:
-   the CP polls the write pointer. GTT 998191104 before,
-   998203392 after: 12 KiB drift, no leak.
-4. Before the fix, five runs: target 42 but signal 1,
-   DESTROY_QUEUE timed out, GPU reset each time.
+1. Host checks clean; `rbg probe`, `rbg mem` unchanged.
+2. `rbg add 1`, `1048576`, `16777216`, `67108864`: all verify,
+   exit 0. Best times and GB/s in docs/lessons.md.
+3. Bisect kernels store42, vload, sload, sdump, vbranch, v4probe,
+   vadd2, vadd16 all verify at N = 1. vadd (v4, block 0) hangs.
+4. `rbg add 16777216 --fine`: verify, 906 us, 222 GB/s.
+   `rbg add 67108864 --fine`: hangs, server stopped, no fault.
 
 ## Stale
 
-None. One note: the unit 4 prompt says to cmp against
-"the committed" kernel files, but kernels/, tools/asm and
-src/kernels/ are still untracked from unit 3b.
+None.
 
 ## Exact next step
 
-Unit 5: a kernel that matters. Elementwise add of two large
-float buffers across many workgroups; measure bandwidth. Prompt
-not yet written.
+Unit 5b: survive a pause. Prompt: docs/prompts/unit-5b.md.

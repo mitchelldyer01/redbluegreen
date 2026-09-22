@@ -12,6 +12,7 @@ const RING_SIZE: u64 = 64 * 1024;
 fn usage() -> ! {
     eprintln!("usage: rbg probe [--acquire] | rbg mem | rbg queue");
     eprintln!("        [--cwsr-short] | rbg dispatch [--no-doorbell]");
+    eprintln!("        | rbg add N [--fine] [--reps R] [--wg W] [--kernel K]");
     std::process::exit(2);
 }
 
@@ -19,7 +20,11 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let known = matches!(
         args.first().map(String::as_str),
-        Some("probe") | Some("mem") | Some("queue") | Some("dispatch")
+        Some("probe")
+            | Some("mem")
+            | Some("queue")
+            | Some("dispatch")
+            | Some("add")
     );
     if !known {
         usage();
@@ -29,6 +34,7 @@ fn main() {
         Some("mem") => run_mem(),
         Some("queue") => run_queue(&args),
         Some("dispatch") => run_dispatch(&args),
+        Some("add") => run_add(&args),
         _ => unreachable!("checked above"),
     };
     if let Err(e) = result {
@@ -147,7 +153,9 @@ fn run_dispatch(args: &[String]) -> kfd::Result<()> {
     let (cwsr_size, cwsr_bo, ctl) = queue_args(false, &node);
     let mut q = kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, ctl)?;
 
-    let kern = kfd::Kernel::new(&k)?;
+    let kd: &[u8; 64] = include_bytes!("../kernels/store42.kd");
+    let text: &[u8] = include_bytes!("../kernels/store42.text");
+    let kern = kfd::Kernel::new(&k, kd, text)?;
     let sig = kfd::Signal::new(&k)?;
     let flags = kfd::ALLOC_GTT | kfd::ALLOC_WRITABLE | kfd::ALLOC_COHERENT;
     let mut kernarg = kfd::Buffer::new(&k, 4096, flags)?;
@@ -195,5 +203,242 @@ fn run_dispatch(args: &[String]) -> kfd::Result<()> {
         Ok(())
     } else {
         Err(kfd::Error::other("dispatch", "target is not 42"))
+    }
+}
+
+/// Parse `add N [--fine] [--reps R] [--wg W] [--kernel K]`.
+/// --wg sets the workgroup size (default 256; vadd assumes 256,
+/// so other values are only valid with N = 1). --kernel runs a
+/// bisect kernel (store42, vload, sload) under this harness
+/// instead of vadd. Both exist to bisect a hang one run at a time.
+fn add_args(args: &[String]) -> kfd::Result<(u32, bool, u32, u32, String)> {
+    let mut n: u32 = 0;
+    let mut fine = false;
+    let mut reps = 5u32;
+    let mut wg = 256u32;
+    let mut kernel = String::from("vadd2");
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--fine" => fine = true,
+            "--kernel" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err(kfd::Error::other(
+                        "add",
+                        "--kernel takes a name",
+                    ));
+                }
+                kernel = args[i].clone();
+            }
+            "--wg" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err(kfd::Error::other("add", "--wg takes a value"));
+                }
+                wg = args[i]
+                    .parse()
+                    .map_err(|_| kfd::Error::other("add", "bad --wg"))?;
+            }
+            "--reps" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err(kfd::Error::other(
+                        "add",
+                        "--reps takes a value",
+                    ));
+                }
+                reps = args[i]
+                    .parse()
+                    .map_err(|_| kfd::Error::other("add", "bad --reps"))?;
+            }
+            s => {
+                n = s.parse().map_err(|_| kfd::Error::other("add", "bad N"))?;
+            }
+        }
+        i += 1;
+    }
+    if n == 0 || reps == 0 || wg == 0 || wg > 1024 {
+        return Err(kfd::Error::other("add", "N, reps, wg out of range"));
+    }
+    Ok((n, fine, reps, wg, kernel))
+}
+
+fn run_add(args: &[String]) -> kfd::Result<()> {
+    let (n, fine, reps, wg, kernel) = add_args(args)?;
+    let kernel = kernel.as_str();
+    let k = open_kfd()?;
+    let node = kfd::find_node()?;
+    let (cwsr_size, cwsr_bo, ctl) = queue_args(false, &node);
+    let mut q = kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, ctl)?;
+
+    let (kd, text): (&[u8; 64], &[u8]) = match kernel {
+        "store42" => (
+            include_bytes!("../kernels/store42.kd"),
+            include_bytes!("../kernels/store42.text"),
+        ),
+        "vload" => (
+            include_bytes!("../kernels/vload.kd"),
+            include_bytes!("../kernels/vload.text"),
+        ),
+        "sload" => (
+            include_bytes!("../kernels/sload.kd"),
+            include_bytes!("../kernels/sload.text"),
+        ),
+        "sdump" => (
+            include_bytes!("../kernels/sdump.kd"),
+            include_bytes!("../kernels/sdump.text"),
+        ),
+        "vadd2" => (
+            include_bytes!("../kernels/vadd2.kd"),
+            include_bytes!("../kernels/vadd2.text"),
+        ),
+        "v4probe" => (
+            include_bytes!("../kernels/v4probe.kd"),
+            include_bytes!("../kernels/v4probe.text"),
+        ),
+        "vadd16" => (
+            include_bytes!("../kernels/vadd16.kd"),
+            include_bytes!("../kernels/vadd16.text"),
+        ),
+        "vbranch" => (
+            include_bytes!("../kernels/vbranch.kd"),
+            include_bytes!("../kernels/vbranch.text"),
+        ),
+        _ => (
+            include_bytes!("../kernels/vadd.kd"),
+            include_bytes!("../kernels/vadd.text"),
+        ),
+    };
+    let kern = kfd::Kernel::new(&k, kd, text)?;
+    // The bisect kernels all leave 42 in c[0]: store42 stores
+    // it, vload adds 1 to a 41 we plant, sload adds 41 to n = 1.
+    let store42 = !matches!(kernel, "vadd" | "vadd2" | "vadd16");
+
+    // Coarse by default, the ROCr choice for compute data; the
+    // packet's system-scope fences make the writes visible.
+    // --fine adds COHERENT.
+    let mut flags = kfd::ALLOC_GTT | kfd::ALLOC_WRITABLE;
+    if fine {
+        flags |= kfd::ALLOC_COHERENT;
+    }
+    let size = (n as u64 * 4 + 4095) & !4095; // page-rounded
+    let mut a = kfd::Buffer::new(&k, size, flags)?;
+    let mut b = kfd::Buffer::new(&k, size, flags)?;
+    let mut c = kfd::Buffer::new(&k, size, flags)?;
+
+    for (i, x) in a.as_slice_mut::<f32>()[..n as usize].iter_mut().enumerate() {
+        *x = (i & 0xFFFF) as f32;
+    }
+    for x in b.as_slice_mut::<f32>()[..n as usize].iter_mut() {
+        *x = 1.0;
+    }
+    for x in c.as_slice_mut::<u32>()[..n as usize].iter_mut() {
+        *x = if matches!(kernel, "vload" | "v4probe") {
+            41
+        } else {
+            0
+        };
+    }
+
+    if kernel == "sdump" {
+        println!(
+            "a {:#x} b {:#x} c {:#x} n {n}",
+            a.va as u64, b.va as u64, c.va as u64
+        );
+    }
+    // kernarg, 32 bytes: a u64 @0, b u64 @8, c u64 @16, n u32 @24.
+    let ka = kfd::ALLOC_GTT | kfd::ALLOC_WRITABLE | kfd::ALLOC_COHERENT;
+    let mut kernarg = kfd::Buffer::new(&k, 4096, ka)?;
+    // store42 takes one pointer at 0 and writes 42 there: give
+    // it c, so the harness's verify reads c[0] either way.
+    let first = if matches!(kernel, "store42" | "vload" | "v4probe") {
+        c.va
+    } else {
+        a.va
+    };
+    kernarg.as_slice_mut::<u8>()[0..8]
+        .copy_from_slice(&(first as u64).to_le_bytes());
+    kernarg.as_slice_mut::<u8>()[8..16]
+        .copy_from_slice(&(b.va as u64).to_le_bytes());
+    kernarg.as_slice_mut::<u8>()[16..24]
+        .copy_from_slice(&(c.va as u64).to_le_bytes());
+    kernarg.as_slice_mut::<u8>()[24..28].copy_from_slice(&n.to_le_bytes());
+
+    // The 64-byte packet: workgroup 256, grid
+    // ((n + 255) / 256) * 256, the rest as in run_dispatch.
+    let grid_x = ((n as u64).div_ceil(wg as u64) * wg as u64) as u32;
+    let mut p = [0u8; 64];
+    p[0..2].copy_from_slice(&0x1502u16.to_le_bytes()); // header
+    p[2..4].copy_from_slice(&1u16.to_le_bytes()); // setup, 1 dim
+    p[4..6].copy_from_slice(&(wg as u16).to_le_bytes()); // workgroup x
+    p[6..8].copy_from_slice(&1u16.to_le_bytes()); // workgroup y
+    p[8..10].copy_from_slice(&1u16.to_le_bytes()); // workgroup z
+    p[12..16].copy_from_slice(&grid_x.to_le_bytes()); // grid x
+    p[16..20].copy_from_slice(&1u32.to_le_bytes()); // grid y
+    p[20..24].copy_from_slice(&1u32.to_le_bytes()); // grid z
+    p[32..40].copy_from_slice(&kern.object().to_le_bytes());
+    p[40..48].copy_from_slice(&(kernarg.va as u64).to_le_bytes());
+
+    let mut best: u64 = u64::MAX;
+    for rep in 1..=reps {
+        // The signal is fresh each rep; the buffers are reused.
+        let sig = kfd::Signal::new(&k)?;
+        p[56..64].copy_from_slice(&sig.va().to_le_bytes());
+        let start = std::time::Instant::now();
+        q.dispatch(&p, true);
+        if let Err(e) = sig.wait(std::time::Duration::from_secs(5)) {
+            // Diagnostics before the process exits into a hung
+            // DESTROY_QUEUE: did the CP retire the packet, and
+            // did the kernel write anything?
+            let rptr = q.read_ptr.as_slice_mut::<u64>()[0];
+            c.remap()?;
+            let c0 = unsafe { std::ptr::read_volatile(c.va as *const u32) };
+            println!(
+                "timeout: rptr {rptr}, signal {}, c[0] bits {c0:#x}",
+                sig.value()
+            );
+            return Err(e);
+        }
+        let us = start.elapsed().as_micros() as u64;
+        println!("rep {rep}: {us} us");
+        best = best.min(us);
+    }
+    // 12 * n bytes moved: a and b read, c written.
+    let gbs = 12.0 * n as f64 / (best as f64 * 1e-6) / 1e9;
+    println!("best: {best} us, GB/s: {gbs:.2}");
+
+    // Take a fresh host view of c, then check every element.
+    c.remap()?;
+    if kernel == "sdump" {
+        let w = c.as_slice_mut::<u32>();
+        println!(
+            "s4 {:#x} s5 {:#x} s6 {:#x} s7 {:#x} s10 {} s2 {} v0 {} mark {}",
+            w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]
+        );
+        return if w[7] == 42 {
+            println!("verify: dump ok");
+            Ok(())
+        } else {
+            Err(kfd::Error::other("verify", "no done marker"))
+        };
+    }
+    let bad = (0..n as usize).find(|&i| {
+        let bits =
+            unsafe { std::ptr::read_volatile(c.va.add(i * 4) as *const u32) };
+        if store42 {
+            bits != 42 // store42 writes the integer 42, once per lane
+        } else {
+            f32::from_bits(bits) != (i & 0xFFFF) as f32 + 1.0
+        }
+    });
+    match bad {
+        None => {
+            println!("verify: {n} ok");
+            Ok(())
+        }
+        Some(i) => {
+            Err(kfd::Error::other("verify", &format!("first bad index {i}")))
+        }
     }
 }

@@ -561,18 +561,18 @@ pub struct Kernel<'a> {
 }
 
 impl<'a> Kernel<'a> {
-    /// Load store42 from the two files tools/asm wrote.
-    pub fn new(kfd: &'a Kfd) -> Result<Kernel<'a>> {
-        let desc: &[u8; 64] = include_bytes!("../kernels/store42.kd");
-        let code: &[u8] = include_bytes!("../kernels/store42.text");
+    /// Load a kernel the caller named. `kd` is the 64-byte
+    /// descriptor, `text` the machine code, each an
+    /// `include_bytes!` of a file tools/asm wrote.
+    pub fn new(kfd: &'a Kfd, kd: &[u8; 64], text: &[u8]) -> Result<Kernel<'a>> {
         // 256 plus the code, rounded up to a whole page.
-        let size = (256 + code.len() as u64 + 4095) & !4095;
+        let size = (256 + text.len() as u64 + 4095) & !4095;
         let flags =
             ALLOC_GTT | ALLOC_WRITABLE | ALLOC_EXECUTABLE | ALLOC_COHERENT;
         let mut buf = Buffer::new(kfd, size, flags)?;
         let b = buf.as_slice_mut::<u8>();
-        b[..64].copy_from_slice(desc);
-        b[256..256 + code.len()].copy_from_slice(code);
+        b[..64].copy_from_slice(kd);
+        b[256..256 + text.len()].copy_from_slice(text);
         b[16..24].copy_from_slice(&256i64.to_le_bytes());
         Ok(Kernel { buf })
     }
