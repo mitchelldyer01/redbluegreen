@@ -39,7 +39,8 @@ driver: it prints the uapi version, gpu_id and gfx target, can
 call ACQUIRE_VM, can allocate a 1 MiB GTT buffer, map it to the
 GPU, and verify a pattern through the host view, and can build
 an AQL compute queue and a SIGNAL event on top of it and tear
-both down, and can dispatch a kernel (kernels/store42, built by
+both down, and fill the CWSR header before CREATE_QUEUE (unit
+5b), and can dispatch a kernel (kernels/store42, built by
 `tools/asm` from src/kernels/) and wait on its signal, and can run
 `rbg add N` to add two float buffers with kernels/vadd, time it,
 and verify every element on the CPU. Beyond it, the repo holds

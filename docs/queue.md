@@ -57,4 +57,4 @@ u32 (out), event_type u32 (SIGNAL = 0), auto_reset u32, node_id
 u32 (0), event_id u32 (out), event_slot_index u32 (out). mmap the
 event page on the KFD fd at event_page_offset, 32 KiB. The slot
 is the u64 at index event_slot_index. DESTROY_EVENT: nr 0x09,
-{event_id u32, pad u32}. RUNTIME_ENABLE is for debuggers only.
+{event_id u32, pad u32}. Call RUNTIME_ENABLE once before any queue.

@@ -214,6 +214,19 @@ pub struct KfdDestroyEvent {
     pub _pad: u32,
 }
 
+/// RUNTIME_ENABLE (0x25). ROCr calls it once per process before any
+/// queue. The kernel then tells MES to clear stale process context;
+/// without it a queue created while another process is busy is
+/// never scheduled (unit 5b, 2026-09-22).
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct KfdRuntimeEnable {
+    pub r_debug: u64,
+    pub mode_mask: u32,
+    pub capabilities_mask: u32,
+}
+const _: () = assert!(std::mem::size_of::<KfdRuntimeEnable>() == 16);
+
 const _: () = assert!(std::mem::size_of::<KfdGetVersion>() == 8);
 const _: () = assert!(std::mem::size_of::<KfdAcquireVM>() == 8);
 const _: () = assert!(std::mem::size_of::<KfdAllocMemory>() == 40);
@@ -316,6 +329,23 @@ pub fn get_version(kfd_fd: i32) -> Result<KfdGetVersion> {
         &mut v as *mut _ as *mut u8,
     )?;
     Ok(v)
+}
+
+/// Enable the runtime for this process, mode ENABLE (1), no TTMP
+/// setup. `r_debug` must outlive the process; the kernel keeps
+/// the address for debuggers and never reads it otherwise.
+pub fn runtime_enable(kfd_fd: i32, r_debug: &'static u64) -> Result<()> {
+    let mut arg = KfdRuntimeEnable {
+        r_debug: r_debug as *const u64 as u64,
+        mode_mask: 1,
+        capabilities_mask: 0,
+    };
+    ioctl_check(
+        kfd_fd,
+        ioc(IOC_READ | IOC_WRITE, 16, 0x25), // RUNTIME_ENABLE
+        "ioctl RUNTIME_ENABLE",
+        &mut arg as *mut _ as *mut u8,
+    )
 }
 
 pub fn acquire_vm(kfd_fd: i32, drm_fd: i32, gpu_id: u32) -> Result<()> {
@@ -432,6 +462,12 @@ impl Kfd {
                 return Err(e);
             }
         };
+        static R_DEBUG: u64 = 0;
+        if let Err(e) = runtime_enable(kfd_fd, &R_DEBUG) {
+            close_fd(kfd_fd);
+            close_fd(render_fd);
+            return Err(e);
+        }
         if let Err(e) = acquire_vm(kfd_fd, render_fd, node.gpu_id) {
             close_fd(kfd_fd);
             close_fd(render_fd);
@@ -632,6 +668,22 @@ impl<'a> Signal<'a> {
     }
 }
 
+/// The non-geometry inputs to `Queue::new`.
+///
+/// `event` and `error_payload` must outlive the queue: the
+/// CWSR header names both.
+pub struct QueueOpts<'a> {
+    pub event: &'a Event<'a>,
+    pub error_payload: &'a Buffer<'a>,
+    /// EXECUTABLE on the CWSR BO (the --cwsr-exec switch).
+    pub cwsr_exec: bool,
+    /// Fill the CWSR header before CREATE_QUEUE. --no-header
+    /// turns this off.
+    pub fill_header: bool,
+    /// Print the header words once at creation (--debug).
+    pub verbose: bool,
+}
+
 /// An AQL compute queue.
 ///
 /// Owns the ring, write pointer, read pointer, CWSR and EOP
@@ -665,8 +717,16 @@ impl<'a> Queue<'a> {
         ring_size: u64,
         cwsr_size: u64,
         cwsr_bo_size: u64,
+        debug_size: u64,
         ctl_stack_size: u32,
+        opts: &QueueOpts<'a>,
     ) -> Result<Queue<'a>> {
+        let event = opts.event;
+        let error_payload = opts.error_payload;
+        let cwsr_exec = opts.cwsr_exec;
+        let fill_header = opts.fill_header;
+        let verbose = opts.verbose;
+
         // The ring must be EXECUTABLE. It must not be
         // AQL_QUEUE_MEM: on this kernel that flag makes the BO
         // un-mappable on the render fd, so no host view.
@@ -675,8 +735,36 @@ impl<'a> Queue<'a> {
         let ring = Buffer::new(kfd, ring_size, flags_fine | ALLOC_EXECUTABLE)?;
         let write_ptr = Buffer::new(kfd, 4096, flags_fine)?;
         let read_ptr = Buffer::new(kfd, 4096, flags_fine)?;
-        let cwsr = Buffer::new(kfd, cwsr_bo_size, flags_w)?;
+        let cwsr_flags = if cwsr_exec {
+            flags_w | ALLOC_EXECUTABLE
+        } else {
+            flags_w
+        };
+        let mut cwsr = Buffer::new(kfd, cwsr_bo_size, cwsr_flags)?;
         let eop = Buffer::new(kfd, EOP_SIZE, flags_w | ALLOC_EXECUTABLE)?;
+
+        // The CWSR header, at offset 0 of the area, as
+        // libhsakmt fills it before CREATE_QUEUE. The area is
+        // zero-filled, so the first four words and Reserved
+        // stay 0.
+        if fill_header {
+            let h = cwsr.as_slice_mut::<u8>();
+            h[16..20].copy_from_slice(&(cwsr_size as u32).to_le_bytes());
+            h[20..24].copy_from_slice(&(debug_size as u32).to_le_bytes());
+            h[24..32].copy_from_slice(&(error_payload.va as u64).to_le_bytes());
+            h[32..36].copy_from_slice(&event.event_id.to_le_bytes());
+        }
+        if verbose {
+            let h = cwsr.as_slice_mut::<u8>();
+            let words = (0..9)
+                .map(|i| {
+                    u32::from_le_bytes(h[i * 4..i * 4 + 4].try_into().unwrap())
+                })
+                .map(|w| format!("{w:#010x}"))
+                .collect::<Vec<_>>();
+            println!("cwsr header: {}", words.join(" "));
+        }
+
         let mut arg = KfdCreateQueue {
             ring_base_address: ring.va as u64,
             write_pointer_address: write_ptr.va as u64,
@@ -773,6 +861,23 @@ impl<'a> Queue<'a> {
             unsafe {
                 std::ptr::write_volatile(self.doorbell as *mut u64, index);
             }
+        }
+    }
+}
+
+impl<'a> Queue<'a> {
+    /// Ring the doorbell again with the last packet's index. For
+    /// the lost-doorbell experiment (unit 5b).
+    pub fn reknock(&self) {
+        if self.write_index == 0 {
+            return;
+        }
+        fence(Ordering::Release);
+        unsafe {
+            std::ptr::write_volatile(
+                self.doorbell as *mut u64,
+                self.write_index - 1,
+            );
         }
     }
 }

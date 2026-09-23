@@ -10,9 +10,12 @@ const MEM_SIZE: usize = 1024 * 1024;
 const RING_SIZE: u64 = 64 * 1024;
 
 fn usage() -> ! {
-    eprintln!("usage: rbg probe [--acquire] | rbg mem | rbg queue");
-    eprintln!("        [--cwsr-short] | rbg dispatch [--no-doorbell]");
+    eprintln!("usage: rbg probe [--acquire] | rbg mem");
+    eprintln!("        | rbg queue [--cwsr-short]");
+    eprintln!("        | rbg dispatch [--no-doorbell]");
     eprintln!("        | rbg add N [--fine] [--reps R] [--wg W] [--kernel K]");
+    eprintln!("  queue, dispatch and add also take");
+    eprintln!("    --cwsr-exec --no-header --debug");
     std::process::exit(2);
 }
 
@@ -102,30 +105,86 @@ fn run_mem() -> kfd::Result<()> {
     Ok(())
 }
 
-fn queue_args(short: bool, node: &kfd::NodeInfo) -> (u64, u64, u32) {
+fn queue_args(short: bool, node: &kfd::NodeInfo) -> (u64, u64, u64, u32) {
     // CWSR: ALIGN(cwsr_size + debug, 4096), with
     // debug = ALIGN(cu * 32 * 32, 64) and cu = simd_count /
-    // simd_per_cu.
+    // simd_per_cu. The debug size fills the header's DebugSize.
     let cu = node.simd_count / node.simd_per_cu;
     let debug = (cu * 32 * 32 + 63) & !63;
     let mut cwsr_bo = (node.cwsr_size + debug + 4095) & !4095;
     if short {
         cwsr_bo -= 4096;
     }
-    (node.cwsr_size, cwsr_bo, node.ctl_stack_size as u32)
+    (node.cwsr_size, cwsr_bo, debug, node.ctl_stack_size as u32)
+}
+
+/// The queue switches shared by queue, dispatch and add.
+/// --cwsr-exec adds EXECUTABLE to the CWSR BO, --no-header
+/// skips the header fill, --debug prints the header words.
+fn queue_switches(args: &[String]) -> (bool, bool, bool) {
+    let has = |s: &str| args.iter().any(|a| a == s);
+    (has("--cwsr-exec"), has("--no-header"), has("--debug"))
+}
+
+/// `--wait S`: seconds to wait on a completion signal (default 5).
+/// A long wait leaves time to read /sys/kernel/debug/kfd during a hang.
+fn wait_secs(args: &[String]) -> std::time::Duration {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--wait" {
+            if let Some(v) = it.next().and_then(|v| v.parse::<u64>().ok()) {
+                return std::time::Duration::from_secs(v);
+            }
+        }
+    }
+    std::time::Duration::from_secs(5)
+}
+
+/// `--settle MS`: sleep after CREATE_QUEUE before the first doorbell.
+fn settle_ms(args: &[String]) -> u64 {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a == "--settle" {
+            if let Some(v) = it.next().and_then(|v| v.parse::<u64>().ok()) {
+                return v;
+            }
+        }
+    }
+    0
+}
+
+/// The 4 KiB COHERENT error payload the CWSR header names.
+fn error_payload(k: &kfd::Kfd) -> kfd::Result<kfd::Buffer<'_>> {
+    kfd::Buffer::new(
+        k,
+        4096,
+        kfd::ALLOC_GTT | kfd::ALLOC_WRITABLE | kfd::ALLOC_COHERENT,
+    )
 }
 
 fn run_queue(args: &[String]) -> kfd::Result<()> {
     // --cwsr-short: pass a context area 4 KiB too small, so the
     // kernel answers EINVAL. Tests that every Drop runs on error.
     let short = args.iter().skip(1).any(|a| a == "--cwsr-short");
+    let (exec, no_header, debug) = queue_switches(args);
     let k = open_kfd()?;
     let node = kfd::find_node()?;
 
-    let (cwsr_size, cwsr_bo, ctl) = queue_args(short, &node);
+    let (cwsr_size, cwsr_bo, dbg, ctl) = queue_args(short, &node);
 
-    let mut q = kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, ctl)?;
+    // Event and error payload before the Queue: the CWSR
+    // header names both, so they must outlive it.
     let ev = kfd::Event::new(&k)?;
+    let ep = error_payload(&k)?;
+    let opts = kfd::QueueOpts {
+        event: &ev,
+        error_payload: &ep,
+        cwsr_exec: exec,
+        fill_header: !no_header,
+        verbose: debug,
+    };
+    let mut q =
+        kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, dbg, ctl, &opts)?;
 
     println!("queue_id: {}", q.queue_id);
     println!("doorbell_offset: {:#x}", q.doorbell_offset);
@@ -137,10 +196,12 @@ fn run_queue(args: &[String]) -> kfd::Result<()> {
     let rptr = q.read_ptr.as_slice_mut::<u64>()[0];
     println!("rptr: {rptr}");
 
-    // Event, then Queue, drop here. The Queue drops its Buffers
-    // after DESTROY_QUEUE and the doorbell munmap.
-    drop(ev);
+    // Queue first, then Event, then payload, drop here. The
+    // Queue drops its Buffers after DESTROY_QUEUE and the
+    // doorbell munmap.
     drop(q);
+    drop(ev);
+    drop(ep);
     Ok(())
 }
 
@@ -148,10 +209,21 @@ fn run_dispatch(args: &[String]) -> kfd::Result<()> {
     // --no-doorbell: write the packet and the write pointer,
     // skip the doorbell. The signal must time out.
     let no_doorbell = args.iter().skip(1).any(|a| a == "--no-doorbell");
+    let (exec, no_header, debug) = queue_switches(args);
     let k = open_kfd()?;
     let node = kfd::find_node()?;
-    let (cwsr_size, cwsr_bo, ctl) = queue_args(false, &node);
-    let mut q = kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, ctl)?;
+    let (cwsr_size, cwsr_bo, dbg, ctl) = queue_args(false, &node);
+    let ev = kfd::Event::new(&k)?;
+    let ep = error_payload(&k)?;
+    let opts = kfd::QueueOpts {
+        event: &ev,
+        error_payload: &ep,
+        cwsr_exec: exec,
+        fill_header: !no_header,
+        verbose: debug,
+    };
+    let mut q =
+        kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, dbg, ctl, &opts)?;
 
     let kd: &[u8; 64] = include_bytes!("../kernels/store42.kd");
     let text: &[u8] = include_bytes!("../kernels/store42.text");
@@ -187,7 +259,7 @@ fn run_dispatch(args: &[String]) -> kfd::Result<()> {
     // Poll up to 5 s. On timeout we still print both values
     // below and then return the timeout error; --no-doorbell
     // expects exactly this.
-    let wait_err = sig.wait(std::time::Duration::from_secs(5)).err();
+    let wait_err = sig.wait(wait_secs(args)).err();
 
     // Take a fresh host view, as run_mem does, then read.
     target.remap()?;
@@ -221,6 +293,14 @@ fn add_args(args: &[String]) -> kfd::Result<(u32, bool, u32, u32, String)> {
     while i < args.len() {
         match args[i].as_str() {
             "--fine" => fine = true,
+            // Read by queue_switches; accepted here so they parse.
+            "--cwsr-exec" | "--no-header" | "--debug" | "--reknock" => {}
+            "--settle" => {
+                i += 1; // value read by settle_ms
+            }
+            "--wait" => {
+                i += 1; // value read by wait_secs
+            }
             "--kernel" => {
                 i += 1;
                 if i >= args.len() {
@@ -267,10 +347,21 @@ fn add_args(args: &[String]) -> kfd::Result<(u32, bool, u32, u32, String)> {
 fn run_add(args: &[String]) -> kfd::Result<()> {
     let (n, fine, reps, wg, kernel) = add_args(args)?;
     let kernel = kernel.as_str();
+    let (exec, no_header, debug) = queue_switches(args);
     let k = open_kfd()?;
     let node = kfd::find_node()?;
-    let (cwsr_size, cwsr_bo, ctl) = queue_args(false, &node);
-    let mut q = kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, ctl)?;
+    let (cwsr_size, cwsr_bo, dbg, ctl) = queue_args(false, &node);
+    let ev = kfd::Event::new(&k)?;
+    let ep = error_payload(&k)?;
+    let opts = kfd::QueueOpts {
+        event: &ev,
+        error_payload: &ep,
+        cwsr_exec: exec,
+        fill_header: !no_header,
+        verbose: debug,
+    };
+    let mut q =
+        kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, dbg, ctl, &opts)?;
 
     let (kd, text): (&[u8; 64], &[u8]) = match kernel {
         "store42" => (
@@ -385,9 +476,30 @@ fn run_add(args: &[String]) -> kfd::Result<()> {
         // The signal is fresh each rep; the buffers are reused.
         let sig = kfd::Signal::new(&k)?;
         p[56..64].copy_from_slice(&sig.va().to_le_bytes());
+        if rep == 1 && settle_ms(args) > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(settle_ms(
+                args,
+            )));
+        }
         let start = std::time::Instant::now();
         q.dispatch(&p, true);
-        if let Err(e) = sig.wait(std::time::Duration::from_secs(5)) {
+        let reknock = args.iter().any(|a| a == "--reknock");
+        let waited = if reknock {
+            // Re-ring every 200 ms until done or the wait is over.
+            let deadline = std::time::Instant::now() + wait_secs(args);
+            loop {
+                match sig.wait(std::time::Duration::from_millis(200)) {
+                    Ok(()) => break Ok(()),
+                    Err(e) if std::time::Instant::now() > deadline => {
+                        break Err(e)
+                    }
+                    Err(_) => q.reknock(),
+                }
+            }
+        } else {
+            sig.wait(wait_secs(args))
+        };
+        if let Err(e) = waited {
             // Diagnostics before the process exits into a hung
             // DESTROY_QUEUE: did the CP retire the packet, and
             // did the kernel write anything?

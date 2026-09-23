@@ -2,20 +2,31 @@
 
 ## Position
 
-Unit 5: done. `rbg add` measures 225 GB/s at 64M elements with
-coarse data, 222 GB/s at 16M with fine data. docs/lessons.md has
-the table, the three rules the unit paid for, and two open items:
-the queue does not survive a pause, and 64M of fine data hangs.
+Unit 5b: done. The pause was never the fault. Creating GPU
+mappings while another process is mid-kernel evicts that
+process's buffers out of the 512 MiB VRAM carve-out (page tables
+live there), which pauses its queues, which MES cannot do in
+time; the driver then resets the GPU. Rule 4 in docs/lessons.md.
+Kfd::new now calls RUNTIME_ENABLE as ROCr does; Queue::new fills
+the CWSR header as libhsakmt does. Neither was the fix; both are
+kept because ROCr does them. Bisect switches remain on `rbg add`
+(--cwsr-exec --no-header --reknock --settle --wait --debug).
 
-## Verified on this machine, 2026-09-22, server stopped
+## Verified on this machine, 2026-09-22
 
-1. Host checks clean; `rbg probe`, `rbg mem` unchanged.
-2. `rbg add 1`, `1048576`, `16777216`, `67108864`: all verify,
-   exit 0. Best times and GB/s in docs/lessons.md.
-3. Bisect kernels store42, vload, sload, sdump, vbranch, v4probe,
-   vadd2, vadd16 all verify at N = 1. vadd (v4, block 0) hangs.
-4. `rbg add 16777216 --fine`: verify, 906 us, 222 GB/s.
-   `rbg add 67108864 --fine`: hangs, server stopped, no fault.
+1. Host checks clean; probe and mem unchanged.
+2. Two rbg processes at once, 64M, 1000 reps each: both verify.
+3. Twelve rbg processes at once, 16M, 300 reps each: all verify.
+4. Server up and idle: 64M add verifies at 224 GB/s.
+5. Add started first, server generates mid-run, 20000 reps: all
+   verify, half speed while shared.
+6. Queue created while the server generates: never runs, GPU
+   reset two to three seconds in, kernel log names the server's
+   queue as the one the driver failed to evict. Same with the
+   header fill, with RUNTIME_ENABLE, and with 1-element buffers.
+7. VRAM 468 of 512 MiB used, by alacritty and brave (fdinfo).
+   Page tables go to VRAM on this chip (amdgpu_vm_pt.c v7.0).
+   Reset log: 1 on Sep 21, 31 on Sep 22, none in 30 days before.
 
 ## Stale
 
@@ -23,4 +34,6 @@ None.
 
 ## Exact next step
 
-Unit 5b: survive a pause. Prompt: docs/prompts/unit-5b.md.
+1. Small cleanup unit: remove --cwsr-exec, --no-header,
+   --reknock, --settle from `rbg add`; keep --wait and --debug.
+2. Unit 6: matmul. Prompt not yet written.

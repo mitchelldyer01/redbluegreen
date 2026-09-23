@@ -19,11 +19,15 @@ the mechanics; this page holds the rules.
    uses. vadd with `next_free_vgpr 5` hung on a load into v4; the
    same bytes with `next_free_vgpr 16` ran. Block 0 does not give
    a wave five usable registers, whatever the encoding says.
-4. Preemption. A kernel that runs while another process holds
-   the GPU can be paused, and our queue does not survive the
-   pause. Same binary and size: hang with the model server up,
-   225 GB/s with it down. Until fixed, GPU runs need the server
-   stopped, and long training runs cannot share the desktop.
+4. Do not map new GPU memory while another process is busy on
+   the GPU. Page tables live in the 512 MiB VRAM carve-out here
+   (amdgpu_vm_pt.c), and the desktop keeps it 90 percent full. A
+   fresh mapping allocates page tables there, TTM evicts another
+   process's buffer, that pauses its queues, and MES cannot pause
+   a mid-kernel queue in time: GPU reset, both processes dead.
+   Our own queues survive pauses (12 processes; a queue that ran
+   through a whole server generation). Rule: allocate everything
+   at start, never inside a loop, never with the server busy.
 5. One run first. Five identical runs of a new kernel cost five
    resets and taught the same thing once.
 
@@ -52,5 +56,5 @@ its first store, with no fault logged. Data stays coarse.
 
 ## What next
 
-Unit 5b: make the queue survive a pause, with a reproducer that
-needs no second process if one exists. Then the 64M fine hang.
+Unit 6: the first matmul, with every buffer allocated once at
+start. Open: 768 MiB of fine data hangs before its first store.
