@@ -14,8 +14,7 @@ fn usage() -> ! {
     eprintln!("        | rbg queue [--cwsr-short]");
     eprintln!("        | rbg dispatch [--no-doorbell]");
     eprintln!("        | rbg add N [--fine] [--reps R] [--wg W] [--kernel K]");
-    eprintln!("  queue, dispatch and add also take");
-    eprintln!("    --cwsr-exec --no-header --debug");
+    eprintln!("  queue, dispatch and add also take --debug");
     std::process::exit(2);
 }
 
@@ -118,12 +117,10 @@ fn queue_args(short: bool, node: &kfd::NodeInfo) -> (u64, u64, u64, u32) {
     (node.cwsr_size, cwsr_bo, debug, node.ctl_stack_size as u32)
 }
 
-/// The queue switches shared by queue, dispatch and add.
-/// --cwsr-exec adds EXECUTABLE to the CWSR BO, --no-header
-/// skips the header fill, --debug prints the header words.
-fn queue_switches(args: &[String]) -> (bool, bool, bool) {
-    let has = |s: &str| args.iter().any(|a| a == s);
-    (has("--cwsr-exec"), has("--no-header"), has("--debug"))
+/// The --debug switch, shared by queue, dispatch and add.
+/// Prints the CWSR header words once at creation.
+fn debug_switch(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--debug")
 }
 
 /// `--wait S`: seconds to wait on a completion signal (default 5).
@@ -140,19 +137,6 @@ fn wait_secs(args: &[String]) -> std::time::Duration {
     std::time::Duration::from_secs(5)
 }
 
-/// `--settle MS`: sleep after CREATE_QUEUE before the first doorbell.
-fn settle_ms(args: &[String]) -> u64 {
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        if a == "--settle" {
-            if let Some(v) = it.next().and_then(|v| v.parse::<u64>().ok()) {
-                return v;
-            }
-        }
-    }
-    0
-}
-
 /// The 4 KiB COHERENT error payload the CWSR header names.
 fn error_payload(k: &kfd::Kfd) -> kfd::Result<kfd::Buffer<'_>> {
     kfd::Buffer::new(
@@ -166,7 +150,7 @@ fn run_queue(args: &[String]) -> kfd::Result<()> {
     // --cwsr-short: pass a context area 4 KiB too small, so the
     // kernel answers EINVAL. Tests that every Drop runs on error.
     let short = args.iter().skip(1).any(|a| a == "--cwsr-short");
-    let (exec, no_header, debug) = queue_switches(args);
+    let debug = debug_switch(args);
     let k = open_kfd()?;
     let node = kfd::find_node()?;
 
@@ -179,8 +163,6 @@ fn run_queue(args: &[String]) -> kfd::Result<()> {
     let opts = kfd::QueueOpts {
         event: &ev,
         error_payload: &ep,
-        cwsr_exec: exec,
-        fill_header: !no_header,
         verbose: debug,
     };
     let mut q =
@@ -209,7 +191,7 @@ fn run_dispatch(args: &[String]) -> kfd::Result<()> {
     // --no-doorbell: write the packet and the write pointer,
     // skip the doorbell. The signal must time out.
     let no_doorbell = args.iter().skip(1).any(|a| a == "--no-doorbell");
-    let (exec, no_header, debug) = queue_switches(args);
+    let debug = debug_switch(args);
     let k = open_kfd()?;
     let node = kfd::find_node()?;
     let (cwsr_size, cwsr_bo, dbg, ctl) = queue_args(false, &node);
@@ -218,8 +200,6 @@ fn run_dispatch(args: &[String]) -> kfd::Result<()> {
     let opts = kfd::QueueOpts {
         event: &ev,
         error_payload: &ep,
-        cwsr_exec: exec,
-        fill_header: !no_header,
         verbose: debug,
     };
     let mut q =
@@ -280,24 +260,21 @@ fn run_dispatch(args: &[String]) -> kfd::Result<()> {
 
 /// Parse `add N [--fine] [--reps R] [--wg W] [--kernel K]`.
 /// --wg sets the workgroup size (default 256; vadd assumes 256,
-/// so other values are only valid with N = 1). --kernel runs a
-/// bisect kernel (store42, vload, sload) under this harness
-/// instead of vadd. Both exist to bisect a hang one run at a time.
+/// so other values are only valid with N = 1). --kernel names
+/// the kernel: vadd by default, or vadd-v4hang, the kernel
+/// that hung with next_free_vgpr 5.
 fn add_args(args: &[String]) -> kfd::Result<(u32, bool, u32, u32, String)> {
     let mut n: u32 = 0;
     let mut fine = false;
     let mut reps = 5u32;
     let mut wg = 256u32;
-    let mut kernel = String::from("vadd2");
+    let mut kernel = String::from("vadd");
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--fine" => fine = true,
-            // Read by queue_switches; accepted here so they parse.
-            "--cwsr-exec" | "--no-header" | "--debug" | "--reknock" => {}
-            "--settle" => {
-                i += 1; // value read by settle_ms
-            }
+            // Read by debug_switch; accepted here so it parses.
+            "--debug" => {}
             "--wait" => {
                 i += 1; // value read by wait_secs
             }
@@ -347,7 +324,7 @@ fn add_args(args: &[String]) -> kfd::Result<(u32, bool, u32, u32, String)> {
 fn run_add(args: &[String]) -> kfd::Result<()> {
     let (n, fine, reps, wg, kernel) = add_args(args)?;
     let kernel = kernel.as_str();
-    let (exec, no_header, debug) = queue_switches(args);
+    let debug = debug_switch(args);
     let k = open_kfd()?;
     let node = kfd::find_node()?;
     let (cwsr_size, cwsr_bo, dbg, ctl) = queue_args(false, &node);
@@ -356,45 +333,15 @@ fn run_add(args: &[String]) -> kfd::Result<()> {
     let opts = kfd::QueueOpts {
         event: &ev,
         error_payload: &ep,
-        cwsr_exec: exec,
-        fill_header: !no_header,
         verbose: debug,
     };
     let mut q =
         kfd::Queue::new(&k, RING_SIZE, cwsr_size, cwsr_bo, dbg, ctl, &opts)?;
 
     let (kd, text): (&[u8; 64], &[u8]) = match kernel {
-        "store42" => (
-            include_bytes!("../kernels/store42.kd"),
-            include_bytes!("../kernels/store42.text"),
-        ),
-        "vload" => (
-            include_bytes!("../kernels/vload.kd"),
-            include_bytes!("../kernels/vload.text"),
-        ),
-        "sload" => (
-            include_bytes!("../kernels/sload.kd"),
-            include_bytes!("../kernels/sload.text"),
-        ),
-        "sdump" => (
-            include_bytes!("../kernels/sdump.kd"),
-            include_bytes!("../kernels/sdump.text"),
-        ),
-        "vadd2" => (
-            include_bytes!("../kernels/vadd2.kd"),
-            include_bytes!("../kernels/vadd2.text"),
-        ),
-        "v4probe" => (
-            include_bytes!("../kernels/v4probe.kd"),
-            include_bytes!("../kernels/v4probe.text"),
-        ),
-        "vadd16" => (
-            include_bytes!("../kernels/vadd16.kd"),
-            include_bytes!("../kernels/vadd16.text"),
-        ),
-        "vbranch" => (
-            include_bytes!("../kernels/vbranch.kd"),
-            include_bytes!("../kernels/vbranch.text"),
+        "vadd-v4hang" => (
+            include_bytes!("../kernels/vadd-v4hang.kd"),
+            include_bytes!("../kernels/vadd-v4hang.text"),
         ),
         _ => (
             include_bytes!("../kernels/vadd.kd"),
@@ -402,9 +349,6 @@ fn run_add(args: &[String]) -> kfd::Result<()> {
         ),
     };
     let kern = kfd::Kernel::new(&k, kd, text)?;
-    // The bisect kernels all leave 42 in c[0]: store42 stores
-    // it, vload adds 1 to a 41 we plant, sload adds 41 to n = 1.
-    let store42 = !matches!(kernel, "vadd" | "vadd2" | "vadd16");
 
     // Coarse by default, the ROCr choice for compute data; the
     // packet's system-scope fences make the writes visible.
@@ -425,31 +369,13 @@ fn run_add(args: &[String]) -> kfd::Result<()> {
         *x = 1.0;
     }
     for x in c.as_slice_mut::<u32>()[..n as usize].iter_mut() {
-        *x = if matches!(kernel, "vload" | "v4probe") {
-            41
-        } else {
-            0
-        };
-    }
-
-    if kernel == "sdump" {
-        println!(
-            "a {:#x} b {:#x} c {:#x} n {n}",
-            a.va as u64, b.va as u64, c.va as u64
-        );
+        *x = 0;
     }
     // kernarg, 32 bytes: a u64 @0, b u64 @8, c u64 @16, n u32 @24.
     let ka = kfd::ALLOC_GTT | kfd::ALLOC_WRITABLE | kfd::ALLOC_COHERENT;
     let mut kernarg = kfd::Buffer::new(&k, 4096, ka)?;
-    // store42 takes one pointer at 0 and writes 42 there: give
-    // it c, so the harness's verify reads c[0] either way.
-    let first = if matches!(kernel, "store42" | "vload" | "v4probe") {
-        c.va
-    } else {
-        a.va
-    };
     kernarg.as_slice_mut::<u8>()[0..8]
-        .copy_from_slice(&(first as u64).to_le_bytes());
+        .copy_from_slice(&(a.va as u64).to_le_bytes());
     kernarg.as_slice_mut::<u8>()[8..16]
         .copy_from_slice(&(b.va as u64).to_le_bytes());
     kernarg.as_slice_mut::<u8>()[16..24]
@@ -476,29 +402,9 @@ fn run_add(args: &[String]) -> kfd::Result<()> {
         // The signal is fresh each rep; the buffers are reused.
         let sig = kfd::Signal::new(&k)?;
         p[56..64].copy_from_slice(&sig.va().to_le_bytes());
-        if rep == 1 && settle_ms(args) > 0 {
-            std::thread::sleep(std::time::Duration::from_millis(settle_ms(
-                args,
-            )));
-        }
         let start = std::time::Instant::now();
         q.dispatch(&p, true);
-        let reknock = args.iter().any(|a| a == "--reknock");
-        let waited = if reknock {
-            // Re-ring every 200 ms until done or the wait is over.
-            let deadline = std::time::Instant::now() + wait_secs(args);
-            loop {
-                match sig.wait(std::time::Duration::from_millis(200)) {
-                    Ok(()) => break Ok(()),
-                    Err(e) if std::time::Instant::now() > deadline => {
-                        break Err(e)
-                    }
-                    Err(_) => q.reknock(),
-                }
-            }
-        } else {
-            sig.wait(wait_secs(args))
-        };
+        let waited = sig.wait(wait_secs(args));
         if let Err(e) = waited {
             // Diagnostics before the process exits into a hung
             // DESTROY_QUEUE: did the CP retire the packet, and
@@ -522,27 +428,10 @@ fn run_add(args: &[String]) -> kfd::Result<()> {
 
     // Take a fresh host view of c, then check every element.
     c.remap()?;
-    if kernel == "sdump" {
-        let w = c.as_slice_mut::<u32>();
-        println!(
-            "s4 {:#x} s5 {:#x} s6 {:#x} s7 {:#x} s10 {} s2 {} v0 {} mark {}",
-            w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]
-        );
-        return if w[7] == 42 {
-            println!("verify: dump ok");
-            Ok(())
-        } else {
-            Err(kfd::Error::other("verify", "no done marker"))
-        };
-    }
     let bad = (0..n as usize).find(|&i| {
         let bits =
             unsafe { std::ptr::read_volatile(c.va.add(i * 4) as *const u32) };
-        if store42 {
-            bits != 42 // store42 writes the integer 42, once per lane
-        } else {
-            f32::from_bits(bits) != (i & 0xFFFF) as f32 + 1.0
-        }
+        f32::from_bits(bits) != (i & 0xFFFF) as f32 + 1.0
     });
     match bad {
         None => {

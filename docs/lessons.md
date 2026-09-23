@@ -16,9 +16,9 @@ the mechanics; this page holds the rules.
    kernel object, kernarg, signal. Without it a kernel runs but
    the CP never sees completion. EOP and CWSR stay coarse.
 3. Registers. Ask the assembler for 8 more VGPRs than the code
-   uses. vadd with `next_free_vgpr 5` hung on a load into v4; the
-   same bytes with `next_free_vgpr 16` ran. Block 0 does not give
-   a wave five usable registers, whatever the encoding says.
+   uses. vadd-v4hang with `next_free_vgpr 5` hung on a load into v4;
+   the same bytes with `next_free_vgpr 16` ran. Block 0 does not
+   give a wave five usable registers, whatever the encoding says.
 4. Do not map new GPU memory while another process is busy on
    the GPU. Page tables live in the 512 MiB VRAM carve-out here
    (amdgpu_vm_pt.c), and the desktop keeps it 90 percent full. A
@@ -40,7 +40,7 @@ the mechanics; this page holds the rules.
   vector load path all work as the ISA says; each was proven
   alone with a bisect kernel under src/kernels/.
 
-## Measured (vadd2, server stopped)
+## Measured (vadd, server stopped)
 
 | elements | coarse | fine (COHERENT) |
 |---|---|---|
