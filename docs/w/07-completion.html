@@ -93,38 +93,74 @@ end, and the two faults break it at the signal and at
 REMOVE_QUEUE.</figcaption>
 </figure>
 
-<p>Two faults stood between a kernel that ran and a command processor
-that said so. The kernel accepted both. The hardware refused both, and
-this hardware refuses by hanging, which costs a GPU reset.</p>
+<p>When a kernel finishes, the <abbr title="command processor: the GPU
+front end that reads packets and launches kernels">CP</abbr> sets the
+<abbr title="a 64 byte value in its own buffer; the CP sets it to 0
+when the dispatch is done">completion signal</abbr> to 0. Two faults
+stopped that report.</p>
 
-<p>The first fault was the end-of-pipe buffer. The ioctl comment calls
-it optional, "not required for all ASICs". The gfx11 MQD code programs
-its address and its size into the hardware queue descriptor with no
-zero check. A queue built without one hangs MES on REMOVE_QUEUE at
-destroy time. That cost four resets, and each reset killed a local
-model server that shared the GPU. The fix is a 4 KiB coarse
-EXECUTABLE buffer, the same buffer libhsakmt allocates.</p>
+<p>The Linux kernel accepted both faults. The hardware refused both.
+This hardware refuses by hanging, and a hang costs a GPU reset.</p>
 
-<p>The second fault was the memory type. The kernel ran and the target
-held 42, but the completion signal stayed 1 and the queue could not be
-removed. No page fault was logged. ROCr allocates every buffer the CP
-touches fine-grained, which is COHERENT, and ours had none, so the CP
-reads and atomics did not see the bytes the CPU wrote. The fix is
-COHERENT on the ring, both pointers, the kernel object, the kernarg
-and the signal. That cost five resets before the fix, and five clean
-runs came after it.</p>
+<p>The first fault is a missing EOP buffer.</p>
 
-<p>One earlier fact fell with this fix. When the memory is coherent,
-the CP polls the write pointer, and a packet runs without a doorbell.
-The older note said that only the doorbell starts a packet. That note
-was an artifact of non-coherent memory.</p>
+<p>The <abbr title="a system call that sends one request to a device
+driver">ioctl</abbr> treats the <abbr title="end of pipe: the buffer
+the command processor uses for its end-of-pipe events">EOP</abbr>
+buffer as optional, "not required for all <abbr title="application
+specific integrated circuit: one GPU chip design">ASICs</abbr>". The
+<abbr title="the GPU generation of this chip, RDNA 3 and
+3.5">gfx11</abbr> <abbr title="memory queue descriptor: the
+structure that describes one hardware queue to the
+firmware">MQD</abbr> code programs its address and size into the
+hardware queue descriptor with no zero check.</p>
 
-<p>Each fix came out of reading the sources. kfd_mqd_manager_v11.c
-gave the EOP rule. ROCr amd_aql_queue.cpp and libhsakmt fmm.c gave
-COHERENT in the system allocator. The rule from here is to mirror what
-ROCr allocates, not what the ioctl permits. The other rule is that the
-first GPU run of a new kernel is one run, because five identical runs
-cost five resets and taught the same thing once.</p>
+<p>A queue without an EOP buffer hangs <abbr title="micro engine
+scheduler: the GPU firmware that owns the hardware
+queues">MES</abbr> on <abbr title="the MES call that pauses and
+unmaps a hardware queue">REMOVE_QUEUE</abbr> when we destroy it. Our
+fix is a 4 KiB coarse <abbr title="the allocation flag that lets the
+GPU run code from the buffer">EXECUTABLE</abbr> buffer, the same
+buffer <abbr title="the ROCm user-space library that wraps the kfd
+ioctls">libhsakmt</abbr> allocates.</p>
+
+<p>The second fault is the memory type.</p>
+
+<p>With non-coherent buffers, the kernel runs and the target holds 42.
+The completion signal stays 1, the queue cannot be removed, and no
+page fault is logged.</p>
+
+<p><abbr title="the ROCm runtime: AMD's user-space HSA runtime above
+libhsakmt">ROCr</abbr> allocates every buffer the CP touches
+fine-grained, which is <abbr title="the fine-grained allocation flag:
+the CP's reads, atomics and completion path see the same bytes the
+CPU writes">COHERENT</abbr>. Without COHERENT, the CP's own reads and
+atomics do not see the bytes the CPU wrote.</p>
+
+<p>We set COHERENT on six buffers:</p>
+
+<ol>
+  <li>The <abbr title="the circular buffer of 64 byte packets that
+  the command processor reads">ring</abbr>.</li>
+  <li>The <abbr title="the index of the next free packet slot; the
+  scheduler polls it">write pointer</abbr>.</li>
+  <li>The <abbr title="the index of the next packet the hardware will
+  run">read pointer</abbr>.</li>
+  <li>The <abbr title="the buffer that holds the kernel descriptor
+  and its code">kernel object</abbr>.</li>
+  <li>The <abbr title="kernel arguments: the buffer that holds the
+  arguments a kernel reads at start">kernarg</abbr> buffer.</li>
+  <li>The signal.</li>
+</ol>
+
+<p>Coherent memory also changes how a packet starts. The CP polls the
+write pointer, so a packet runs without a <abbr title="mapped
+registers: a process writes one to tell the GPU that a queue has new
+work">doorbell</abbr> write.</p>
+
+<p>The kernel accepts many things that the hardware then refuses. Our
+buffers mirror what ROCr allocates. What the ioctl permits is not
+enough.</p>
 
 <h2>Sources</h2>
 <ul class="sources">

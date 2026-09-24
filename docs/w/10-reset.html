@@ -19,7 +19,7 @@
 
 <h1>The reset chain</h1>
 <p class="lede">One new GPU mapping, made while another process was
-busy, walked a chain of seven steps to a GPU reset.</p>
+busy, walks a chain of six steps to a GPU reset.</p>
 
 <figure>
 <svg viewBox="0 0 800 420" role="img" xmlns="http://www.w3.org/2000/svg"
@@ -130,45 +130,80 @@ busy, walked a chain of seven steps to a GPU reset.</p>
   <text x="732" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">one-element</text>
 </svg>
 <figcaption>A new mapping made while a local model server generates
-runs a seven-step chain from page tables in a full carve-out to a GPU
+runs a six-step chain from page tables in a full carve-out to a GPU
 reset that kills both processes.</figcaption>
 </figure>
 
-<p>The symptom was narrow. A queue created while a local model server
-was generating never ran, and the GPU reset two to three seconds in.
-Our own code looked correct, so the first job was to find the faulty
-half.</p>
+<p>A queue we create while a local model server is generating never
+runs. The GPU resets two to three seconds later.</p>
 
-<p>Eight experiments, one reset at most each, in order. Two of our
-processes at once, 64M and 1000 reps: both finish. Twelve at once: all
-finish, with the bandwidth shared. The server up but idle: a 64M add
-at full speed. The add started first and the server generating mid
-run, 20000 reps: all results verify at half speed. That run proves our
-queues survive pauses; the twelve-process run proves it twice. Then the failures. A queue created during generation
-hangs and resets the GPU. The same follows with the context save
-header filled, with RUNTIME_ENABLE, and with 1-element buffers, where
-the queue ran its first packet before the reset came. Every kernel log
-named the server queue as the one the driver failed to evict, and the
-server as the process it failed to suspend.</p>
+<p>Eight experiments, at most one reset each, split the fault:</p>
 
-<p>The driver source gives the chain. Page tables are allocated in
-VRAM on this chip, and only app APUs use system memory. A new mapping
-needs page-table pages, so TTM evicts another process's VRAM buffer.
-A kfd buffer carries an eviction fence, so evicting it means pausing
-that process's queues with REMOVE_QUEUE through MES. MES cannot pause
-a mid-kernel queue in time, the driver declares MES unrecoverable, and
-both processes die.</p>
+<ol>
+  <li>Two of our processes at once, 64M and 1000 reps: both
+  finish.</li>
+  <li>Twelve of our processes at once: all finish, with the
+  bandwidth shared.</li>
+  <li>The server up but idle: a 64M add runs at full speed.</li>
+  <li>Our add starts first and the server generates mid run, 20000
+  reps: all results verify at half speed. Our queues survive being
+  paused.</li>
+  <li>A queue created during generation hangs and resets the GPU.
+  The same happens with the <abbr title="compute wave save restore:
+  the area where the hardware saves a paused queue's wave
+  state">CWSR</abbr> header filled, with <abbr
+  title="the kfd ioctl that tells the driver a runtime now owns this
+  process">RUNTIME_ENABLE</abbr>, and with 1-element buffers.</li>
+  <li>The 1-element run executes its first packet before the reset
+  comes.</li>
+</ol>
 
-<p>Three candidate fixes were wrong for one reason. The context save
-header, the executable flag on the save area, and RUNTIME_ENABLE all
-concern pausing our queue, which was never the queue being paused.
-Rule 4 follows: allocate every GPU buffer at start, never inside a
-loop, never while another process is busy.</p>
+<p>For every failure, the kernel log names the server's queue as the
+one the driver failed to evict. It names the server as the process
+it failed to suspend.</p>
 
-<p>The reset history agrees. One reset on the first day, 31 on the
-second, none in the 30 days before, and every one was ours. The
-scheduler gives 10 ms per process and 1 ms per gang; the
-twelve-process pass shows our waves survive that switching.</p>
+<p>The driver source gives the chain:</p>
+
+<ol>
+  <li>GPU page tables live in <abbr title="video RAM: memory reserved
+  for the GPU alone">VRAM</abbr> on this chip. Only "app <abbr
+  title="accelerated processing unit: a CPU and a GPU on one
+  chip">APUs</abbr>" use system memory.</li>
+  <li>VRAM here is a 512 MiB carve-out. The desktop uses 468 MiB of
+  it, per <abbr title="the per-process file in /proc that reports a
+  process's GPU memory use">fdinfo</abbr>.</li>
+  <li>A new GPU mapping needs page-table pages. <abbr title="translation
+  table manager: the kernel memory manager that moves GPU buffers
+  between VRAM and system RAM">TTM</abbr> evicts another process's
+  VRAM buffer to make room.</li>
+  <li>A <abbr title="kernel fusion driver: the AMD kernel driver for
+  compute, at /dev/kfd">kfd</abbr> buffer carries an <abbr
+  title="a marker that ties a buffer to its process's queues, so
+  moving the buffer first pauses those queues">eviction fence</abbr>.
+  Evicting it pauses that process's queues with <abbr title="the MES
+  call that pauses and unmaps a hardware queue">REMOVE_QUEUE</abbr>
+  through <abbr title="micro engine scheduler: the GPU firmware that
+  owns the hardware queues">MES</abbr>.</li>
+  <li>MES cannot pause the server's mid-kernel queue in time. The
+  driver declares MES unrecoverable and resets the GPU.</li>
+  <li>Both processes die.</li>
+</ol>
+
+<p>The CWSR header, the executable flag on the save area, and
+RUNTIME_ENABLE all concern pausing our queue. Our queue is never the
+one being paused.</p>
+
+<p>Rule 4: allocate every GPU buffer at start, never inside a loop,
+never while another process is busy.</p>
+
+<p>A long-lived training process that maps once is safe on a shared
+desktop, because our queues survive pauses.</p>
+
+<p>Every reset was ours. The scheduler gives 10 ms per process and
+1 ms per <abbr title="a group of queues that MES schedules
+together">gang</abbr>, and our <abbr title="a group of 32 or 64
+threads the GPU runs in lockstep">waves</abbr> survive that
+switching with twelve processes at once.</p>
 
 <h2>Sources</h2>
 <ul class="sources">

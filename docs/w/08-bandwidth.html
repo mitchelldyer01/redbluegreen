@@ -81,18 +81,42 @@ large sizes, and a one-element dispatch measures the launch floor instead of a
 bandwidth.</figcaption>
 </figure>
 
-<p>vadd is the simplest kernel that can fill the memory system: one
-work-item per element, two loads and one store, and no reuse of a
-loaded value. That makes it a probe of bandwidth rather than of
-arithmetic. The host times it from just before the doorbell write to
-the moment the completion signal reaches zero, so the number holds the
-launch as well as the kernel. Each size runs five reps with a fresh
-signal and reused buffers, and the best rep is kept.</p>
+<p>We measure bandwidth with <abbr title="vector add: our kernel that
+computes c[i] = a[i] + b[i]">vadd</abbr>, which computes
+<code>c[i] = a[i] + b[i]</code>.</p>
 
-<p>Bandwidth counts twelve bytes per element over that best time. The
-two large sizes settle at 88 percent of the theoretical peak, which is
-as near as a streaming kernel gets here. The smallest streaming size
-falls short because the launch is still a large share of its total.</p>
+<p>The kernel:</p>
+
+<ol>
+  <li>Each <abbr title="one GPU thread; a wave runs 32 of them
+  together">work-item</abbr> handles one element. It does two loads
+  and one store.</li>
+  <li>A <abbr title="a group of work-items that the GPU dispatches
+  together">workgroup</abbr> is 256 work-items. The grid is n rounded
+  up to a multiple of 256.</li>
+  <li>A bounds check on n stops the work-items past the end.</li>
+  <li>The <abbr title="kernel arguments: the buffer that holds the
+  arguments a kernel reads at start">kernarg</abbr> holds the a, b
+  and c pointers and n.</li>
+  <li>The code is 16 instructions.</li>
+</ol>
+
+<p>No loaded value is used twice, so memory sets the speed.</p>
+
+<p>The host times one dispatch. The clock starts just before the
+<abbr title="mapped registers: a process writes one to tell the GPU
+that a queue has new work">doorbell</abbr> write. It stops when the
+<abbr title="a 64 byte value that the CP sets from 1 to 0 when the
+kernel ends">completion signal</abbr> reaches zero. So the time
+includes the launch.</p>
+
+<p>Each size runs five reps with a fresh signal and reused buffers.
+We keep the best rep.</p>
+
+<p>Bandwidth is 12 bytes per element over the best time: two reads
+and one write. We measured with the model server stopped and <abbr
+title="coarse-grained: memory without COHERENT, for data the kernels
+read and write">coarse</abbr> data unless a row says fine.</p>
 
 <div class="table-scroll">
 <table>
@@ -108,25 +132,42 @@ falls short because the launch is still a large share of its total.</p>
 </table>
 </div>
 
-<p>A dispatch of one element costs 133 us, and that is a floor under
-every dispatch rather than a property of memory. david has to amortize
-it. A training step must move enough bytes that the floor is small
-against the step, so the floor sets a lower bound on batch size.</p>
+<p>The theoretical peak is 256 GB/s. The largest size reaches 225
+GB/s, which is 88 percent of the peak.</p>
 
-<p>Fine grained data runs at the same speed as coarse data on this
-load, so the COHERENT flag costs nothing while streaming. The largest
-fine buffer hangs before its first store and logs no fault. That stays
-an open item, and the data stays coarse.</p>
+<p>At 1,048,576 elements the launch is still a large share of the
+time, so the rate is only 83 GB/s.</p>
 
-<p>Two of our own processes at once split the bandwidth between them
-instead of adding to it. With a local model server generating
-alongside, the reps ran at roughly half speed and every result still
-verified. The hardware runs the queues side by side and does not
-starve one for the other.</p>
+<p>The launch floor is 133 us.</p>
 
-<p>The earlier guess at the peak is now a measurement. The other
-guess, a few TFLOP/s of arithmetic, waits for the first matmul in
-unit 6.</p>
+<p>A dispatch of one element costs 133 us. Every dispatch pays this
+cost before it moves any memory.</p>
+
+<p>At 225 GB/s, 133 us moves about 30 MB. A training step must move
+enough bytes that 133 us is small against it. So the floor sets a
+lower bound on the batch size.</p>
+
+<p><abbr title="memory the CP and the CPU see the same bytes of; set
+with the COHERENT flag">Fine-grained</abbr> data streams at the same
+speed as coarse data: 222 GB/s against 218 GB/s at 16,777,216
+elements. So the <abbr title="the allocation flag for fine-grained
+memory, bit 26">COHERENT</abbr> flag costs nothing on streaming
+loads.</p>
+
+<p>At 67,108,864 fine elements (768 MiB), the kernel hangs before its
+first store and logs no fault. This is an open item. Our data stays
+coarse.</p>
+
+<p>Two processes share the bandwidth.</p>
+
+<p>With two <abbr title="the redbluegreen command-line
+tool">rbg</abbr> processes at once, their bandwidths add up to about
+the bandwidth of one process alone. With a model server generating
+alongside, our reps run at about half speed, and every result is
+correct.</p>
+
+<p>The hardware runs the queues side by side. It does not starve one
+queue for another.</p>
 
 <h2>Sources</h2>
 <ul class="sources">

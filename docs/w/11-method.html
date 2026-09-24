@@ -117,36 +117,106 @@ tools/drive either starts the next session or stops for the person who
 owns the GPU.</figcaption>
 </figure>
 
-<p>A 27B local model (Qwen) running in a coding agent wrote the
-implementation, one unit per one-page prompt. A larger model drove:
-it planned the units, verified each fact in kernel and ROCm source,
-reviewed every handoff, and bisected the hangs. The owner ran every
-GPU step by hand and decided at every gate.
-The method exists because the small model has a small context and the
-GPU has no undo.</p>
+<p>Two models and one person build <code>redbluegreen</code>.</p>
 
-<p>Docs carry the shape: 80 columns, 60 lines, story shape, and no
-repeat of a fact another page owns. A checker in sh and awk enforces the first two rules; a person reviews the rest. Agent reports
-obey the same rules. AGENTS.md holds the rules that failures bought.
-Read files by line range and pipe build output through tail, because
-context is the scarce resource. Never create a GPU queue from inside
-an agent session, because the agent's own model shares the GPU and a
-hang ends the session. Report a wrong doc fact as stale; never fix
-it or trust it. A prompt is a thin launcher: verified facts, a
-goal, a verification loop, and a handoff that rewrites STATUS.md with
-one of four states: done, in progress, ready for GPU test, blocked.
-tools/drive reads that line and starts the next session until the unit
-is done or a person must act. One extension hands off at 40k context
-tokens instead of compacting, because prompt processing runs at about
-200 tokens per second and a long context costs minutes per turn.
-Another extension nudges the model when a turn ends with reasoning and
-no action. </p>
+<p>The small model has a small context, and the GPU has no undo. The
+method splits the work so each side does what it can do safely.</p>
 
-<p>The rules that cost resets take one line each in docs/lessons.md,
-with the date: EOP required; COHERENT on the CP buffers; 8 spare
-VGPRs; no new mapping while another process is busy; one run first.
-Two facts read from source were wrong for this hardware. Reading finds
-candidates, and only a run settles them.</p>
+<p>The roles:</p>
+
+<ol>
+  <li>A 27B local model (<abbr title="an open weight model family;
+  here a 27 billion parameter model on the local
+  server">Qwen</abbr>) in the <abbr title="the coding agent the local
+  model runs in, one session at a time">pi</abbr> coding agent writes
+  the implementation, one unit per one-page prompt.</li>
+  <li>A larger model drives. It plans the units, checks each fact in
+  kernel and <abbr title="AMD's open GPU compute stack: runtime,
+  libraries and tools">ROCm</abbr> source, reviews every <abbr
+  title="the report a session leaves in docs/STATUS.md for the next
+  one">handoff</abbr>, and <abbr title="to split a failing case in
+  halves until one change is left">bisects</abbr> the hangs.</li>
+  <li>A person runs every GPU step by hand and decides at every
+  gate.</li>
+</ol>
+
+<p>Our docs follow four rules:</p>
+
+<ol>
+  <li>Every line is at most 80 columns.</li>
+  <li>Every doc is at most 60 lines.</li>
+  <li>Every doc has a story shape: why, what, next.</li>
+  <li>No doc repeats a fact another doc owns.</li>
+</ol>
+
+<p><code>tools/doclint</code>, a checker in sh and awk, enforces the
+first two. A person reviews the rest. Agent reports obey the same
+rules.</p>
+
+<p>Three rules keep the development autonomous:</p>
+
+<ol>
+  <li>Read files by line range and pipe build output through tail.
+  Context is the scarce resource.</li>
+  <li>Never create a GPU queue from inside an agent session. The
+  agent's own model shares the GPU, and a hang ends the session.</li>
+  <li>Report a wrong doc fact as stale. Never fix it or trust it
+  silently.</li>
+</ol>
+
+<p>A prompt is a thin launcher.</p>
+
+<p>It holds facts the driver verified, a goal, a verification loop,
+and a handoff. The handoff rewrites <code>docs/STATUS.md</code> with
+one of four states:</p>
+
+<ol>
+  <li>done</li>
+  <li>in progress</li>
+  <li>ready for GPU test</li>
+  <li>blocked</li>
+</ol>
+
+<p><code>tools/drive</code> reads that line and starts the next
+session. It stops when the unit is done or a person must act.</p>
+
+<p>Two pi extensions shape each session:</p>
+
+<ol>
+  <li>One hands off at 40k context tokens instead of compacting.
+  Prompt processing runs at about 200 tokens per second, so a long
+  context costs minutes per turn.</li>
+  <li>The other nudges the model when a turn ends with reasoning and
+  no action.</li>
+</ol>
+
+<p>The model server runs one slot with the <abbr title="speculative
+decoding: a small draft model proposes tokens and the big model
+checks them">speculative decoder</abbr> on.</p>
+
+<p>The rules that cost resets take one line each in
+<code>docs/lessons.md</code>, with the date:</p>
+
+<ol>
+  <li>The <abbr title="end of pipe: the buffer the command processor
+  uses for its end-of-pipe events">EOP</abbr> buffer is
+  required.</li>
+  <li>The <abbr title="command processor: the GPU front end that
+  reads packets and launches kernels">CP</abbr> buffers are <abbr
+  title="the allocation flag that keeps CPU and GPU views of the
+  memory in sync">COHERENT</abbr>.</li>
+  <li>A kernel asks the assembler for 8 more <abbr title="vector
+  general purpose registers: the per-lane registers of a
+  wave">VGPRs</abbr> than the code uses.</li>
+  <li>No new mapping while another process is busy.</li>
+  <li>One run first.</li>
+</ol>
+
+<p>The bisect kernels are committed as the record. A future hang gets
+bisected against the same set.</p>
+
+<p>Reading source finds candidates. Only a run settles them, and the
+first run is one run.</p>
 
 <h2>Sources</h2>
 <ul class="sources">

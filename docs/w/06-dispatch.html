@@ -185,36 +185,117 @@ the doorbell is the last write and the only one that starts the
 hardware.</figcaption>
 </figure>
 
-<p>A dispatch is four objects. The kernel object holds the descriptor
-and the code. The kernarg buffer holds the address the kernel writes
-to. The signal counts the packet down. The packet points at the other
-three. The descriptor is the dangerous one, because its fields tell
-the hardware how many registers each wave gets and how the wave
-starts. A wrong bit there resets the GPU.
-So the assembler builds the descriptor from the directives in the
-source, and rbg patches exactly one field, the entry offset that the
-assembler leaves as a relocation. Nothing else in those bytes is
-hand made.</p>
+<p>A dispatch is four objects and an order of writes.</p>
 
-<p>The packet is built in one order, and the order is the mechanism.
-The body goes down first. The header goes down last, as a single
-store after a release fence, so the command processor can never read
-a half built packet behind a valid header. The write pointer then
-moves on by one. The doorbell takes the packet index, not the next
-index and not the ring slot. Coherent memory lets the command
-processor find the packet from the write pointer alone, so a packet
-can run with no doorbell at all. Ring it anyway. The doorbell write
-is the one place in the program that starts hardware, and the code
-says so in a comment.</p>
+<p>The four objects:</p>
 
-<p>The first kernel is store42. It loads the target address from the
-kernarg pointer, stores 42, waits for the store, and ends. Nine
-instructions and 36 bytes. The tool <code>tools/asm</code> runs
-llvm-mc and llvm-objcopy to pull out the text and the descriptor, and
-both are committed, so a clone without LLVM still builds. On the
-first run the target became 42. The signal did not reach zero. The
-kernel ran and the completion path did not, and the next page takes
-that apart.</p>
+<ol>
+  <li>The <abbr title="the buffer that holds the kernel descriptor
+  and the code">kernel object</abbr> is one 4 KiB buffer, <abbr
+  title="allocation flag 1&lt;&lt;26: fine-grained memory, so the CP
+  sees the same bytes the CPU writes">COHERENT</abbr> and <abbr
+  title="allocation flag 1&lt;&lt;30: the GPU may run code from
+  it">EXECUTABLE</abbr>. Bytes 0 to 64 hold the <abbr title="the 64
+  byte block that tells the hardware how to start the kernel:
+  registers, segment sizes, entry offset">kernel descriptor</abbr>.
+  The code starts at byte 256.</li>
+  <li>The <abbr title="kernel arguments: the buffer the kernel reads
+  its inputs from">kernarg</abbr> buffer is 4 KiB and COHERENT. It
+  holds the address the kernel writes to.</li>
+  <li>The <abbr title="the 64 byte completion counter that the CP
+  decrements when a packet retires">signal</abbr> is 64 bytes and
+  zero-filled. The kind, 1 for user, is at offset 0. The value is at
+  offset 8.</li>
+  <li>The <abbr title="one 64 byte AQL command in the
+  ring">packet</abbr> sits in the ring and points at the other
+  three.</li>
+</ol>
+
+<p>We set the signal value to 1. The <abbr title="command processor:
+the GPU front end that reads packets and launches kernels">CP</abbr>
+decrements it to 0 when the packet retires. Our code polls it.</p>
+
+<p>The descriptor is the dangerous one.</p>
+
+<p>Its register fields tell the hardware how many registers each
+<abbr title="a group of 32 threads that run one instruction
+together">wave</abbr> gets and how the wave starts. A wrong bit there
+resets the GPU.</p>
+
+<p>So the assembler builds the descriptor from the <abbr
+title="assembler directives that set the descriptor
+fields">.amdhsa_</abbr> directives in the source. We patch one field
+at load: the <abbr title="a signed 64 bit integer">i64</abbr> at
+offset 16, <abbr title="the signed offset from the descriptor to the
+first instruction">kernel_code_entry_byte_offset</abbr>, set to 256.
+The assembler leaves it as a <abbr title="a field the assembler
+leaves at zero for a later step to fill in">relocation</abbr>.</p>
+
+<p>The descriptor asks for the kernarg pointer in <abbr title="the
+first two scalar registers, which together hold one 64 bit
+address">s[0:1]</abbr>.</p>
+
+<p>The packet is 64 bytes. It holds a header and setup, the
+workgroup and grid sizes, the private and group segment sizes, and
+three addresses: kernel_object, kernarg_address and
+completion_signal.</p>
+
+<p>The header is 0x1502: <abbr title="AQL packet type 2: run a
+kernel">KERNEL_DISPATCH</abbr>, <abbr title="header bit: the packet
+waits until earlier packets finish">barrier</abbr>, <abbr
+title="header fence scope: make memory visible across the whole
+system">acquire system</abbr> and release system. Setup 1 means one
+dimension.</p>
+
+<p>The order of writes is the mechanism. <abbr title="the ROCm
+runtime: AMD's user-space HSA library">ROCr</abbr> does exactly
+this:</p>
+
+<ol>
+  <li>Write the packet body.</li>
+  <li>Write the header last, as one <abbr title="an unsigned 32 bit
+  word">u32</abbr> store after a <abbr title="a CPU barrier that
+  makes earlier stores visible before later ones">release
+  fence</abbr>. The CP never reads a half-built packet behind a
+  valid header.</li>
+  <li>Set the <abbr title="the index of the next free packet slot;
+  the scheduler polls it">write pointer</abbr> to the packet index
+  plus one.</li>
+  <li>Write the packet's own index to the <abbr title="the queue's
+  u64 in the doorbell page; a write there starts the
+  hardware">doorbell</abbr>. It is not the index plus one and not
+  the ring slot.</li>
+</ol>
+
+<p>The doorbell write is the one place in our code that starts
+hardware. A comment in the code says so.</p>
+
+<p>With coherent memory, the CP finds the packet from the write
+pointer alone, so a packet can run with no doorbell. Ring it
+anyway.</p>
+
+<p>The first kernel is <code>store42</code>. It is nine instructions
+and 36 bytes of code. Its steps:</p>
+
+<ol>
+  <li>Load the target address from the kernarg pointer.</li>
+  <li>Store 42.</li>
+  <li>Wait for the store.</li>
+  <li>End.</li>
+</ol>
+
+<p><code>tools/asm</code> assembles it with <abbr title="the LLVM
+machine code assembler">llvm-mc</abbr>. Then <abbr title="the LLVM
+tool that copies sections out of an object file">llvm-objcopy</abbr>
+extracts the <abbr title="the object file section that holds the
+code">.text</abbr> code and the 64-byte <abbr title="the object file
+section that holds read-only data">.rodata</abbr> descriptor.</p>
+
+<p>The bytes are committed, so a clone without LLVM still
+builds.</p>
+
+<p>On the first run, target[0] became 42. The signal did not reach
+0.</p>
 
 <h2>Sources</h2>
 <ul class="sources">

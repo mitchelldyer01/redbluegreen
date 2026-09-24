@@ -132,39 +132,62 @@ DESTROY_QUEUE, then the doorbell munmap, then munmap, UNMAP and FREE
 for every Buffer, and closes the two fds last.</figcaption>
 </figure>
 
-<p>Drop is the method Rust runs when a value goes out of scope. In
-unit 3 every kernel resource became a type with a Drop, so the types
-carry the teardown order and the caller no longer has to remember it.
-The owner named ownership the theme of the unit.</p>
+<p><abbr title="the Rust destructor: the method that runs when a
+value goes out of scope">Drop</abbr> is the method Rust runs when a
+value goes out of scope. Every kernel resource is a type with a Drop,
+so the types carry the teardown order. The caller does not have to
+remember it.</p>
 
-<p>Kfd holds the two fds and the gpu_id, and its Drop closes both fds.
-Buffer holds a va, a size, a handle, flags and a view_mapped bit; its
-Drop does munmap, UNMAP and FREE. A Drop cannot fail, so an error
-inside it prints to stderr and the work goes on. as_slice_mut borrows
-through the Buffer, so a slice cannot outlive the memory behind it,
-and remap drops the host view and retakes it. Queue owns the ring,
-write_ptr, read_ptr, cwsr and eop Buffers with the doorbell mapping;
-its Drop sends DESTROY_QUEUE, munmaps the doorbell, and then lets the
-Buffers drop in declaration order. Event owns an event id and its
-page. Kernel and Signal each hold one Buffer.</p>
+<p>The tree, outermost first:</p>
 
-<p>Every syscall returns Result&lt;T, Error&gt;. The Error carries the
-call name and the errno, and it prints as "call: message". main prints
-it and exits 1. There is no die().</p>
+<ol>
+  <li><abbr title="the type that owns the open driver: both fds and
+  the gpu_id">Kfd</abbr> holds the two fds and the gpu_id. Its Drop
+  closes both.</li>
+  <li><abbr title="the type that owns one GPU allocation and its host
+  view">Buffer</abbr> holds a <abbr title="virtual address: the one
+  address both the CPU and the GPU use for it">va</abbr>, a size, a
+  handle, flags and a <abbr title="a bit that records whether the
+  host view is mapped right now">view_mapped</abbr> bit. Its Drop
+  does munmap, UNMAP and FREE.</li>
+  <li><abbr title="the type that owns one hardware queue and its five
+  buffers">Queue</abbr> owns the ring, write_ptr, read_ptr, cwsr and
+  eop Buffers and the doorbell mapping. Its Drop sends <abbr
+  title="the kfd ioctl that removes a hardware
+  queue">DESTROY_QUEUE</abbr>, munmaps the doorbell, and then lets
+  the Buffers drop in declaration order.</li>
+  <li><abbr title="the type that owns one kfd event and its slot in
+  the event page">Event</abbr> owns an event id and the event
+  page.</li>
+  <li><abbr title="the type that owns the buffer holding a kernel
+  descriptor and its code">Kernel</abbr> and <abbr title="the type
+  that owns the 64 byte completion signal in its own
+  buffer">Signal</abbr> each hold one Buffer.</li>
+</ol>
 
-<p>This mattered because the flat functions of unit 2 leaked a handle
-on any early exit until the process ended. A leak of 1 MiB is nothing.
-A training run keeps a corpus of gigabytes resident, and a GPU hang on
-this APU takes the desktop with it. Ownership is the cheapest guard,
-and it is the reason Rust was chosen over C. Two runs prove that Drop
-runs on the error path: the too-small CWSR run, which got EINVAL from
-the kernel, exited 1 and left GTT unchanged, and the forced verify
-failure in unit 2.</p>
+<p>A Drop cannot fail. An error inside it prints to <abbr
+title="standard error: the output stream for messages">stderr</abbr>
+and the work goes on.</p>
+
+<p><abbr title="the Buffer method that gives a mutable slice over the
+host view">as_slice_mut</abbr> borrows through the Buffer, so a slice
+cannot outlive the memory behind it.</p>
+
+<p>Every syscall returns <abbr title="the Rust type that holds either
+a value or an error">Result&lt;T, Error&gt;</abbr>. The Error carries
+the call name and the <abbr title="the error number a failed system
+call leaves behind">errno</abbr>, and prints as "call: message".
+<code>main</code> prints it and exits 1.</p>
+
+<p>Why this matters: a training run keeps a corpus of gigabytes
+resident, and a GPU hang on this <abbr title="accelerated processing
+unit: a CPU and a GPU on one chip">APU</abbr> takes the desktop with
+it. Ownership is the cheapest guard. It is the reason we chose Rust
+over C.</p>
 
 <p>Nesting gives the order for free. A Queue drops its own fields
 first and then its Buffers, so DESTROY_QUEUE always runs before the
-ring memory is freed. The next page dispatches a kernel into this
-queue.</p>
+ring memory is freed.</p>
 
 <h2>Sources</h2>
 <ul class="sources">

@@ -143,58 +143,108 @@ rule about VGPR blocks.</p>
 the VGPR count in the kernel descriptor.</figcaption>
 </figure>
 
-<p>vadd hung on its first run. The harness printed rptr 0, signal 1 and
-c[0] 0: the packet never retired and the kernel never reached its
-store. The log showed no fault. Every experiment cost one GPU reset, so
-a guess was expensive. Each kernel below answers exactly one question,
-and the order gets the most information per reset. All of them run with
-one wave, one element, and the harness unchanged.</p>
+<p><abbr title="the vector add kernel: c[i] = a[i] + b[i], one
+work-item per element">vadd</abbr> hung on its first run.</p>
 
-<p>store42 at workgroup 256 ran eight waves of known-good code and
-passed, so eight waves are safe. vadd as one wave hung, and it hung
-again on fine-grained data, so the data type is clear. vload proved one
-vector load. sload proved the three scalar loads, including the 128-bit
-one. vbranch proved the exec-mask sequence and the branch. Each of
-those passed.</p>
+<p>The harness printed <abbr title="read pointer: the index of the next
+packet the hardware will run">rptr</abbr> 0, <abbr title="the
+completion signal: 1 while the kernel runs, 0 when the CP sees it
+end">signal</abbr> 1 and c[0] 0. The packet never retired, and the
+kernel never reached its store. The log showed no fault.</p>
+
+<p>Every experiment costs one GPU reset. So each kernel answers one
+question, and the order gets the most information per reset.</p>
+
+<p>Every kernel runs with one <abbr title="a group of 32 work-items
+that run one instruction stream together">wave</abbr>, one element,
+and the harness unchanged.</p>
+
+<p>The kernels and what each one shows:</p>
+
+<ol>
+  <li>store42 at <abbr title="a set of waves the packet launches
+  together; the packet gives its size">workgroup</abbr> 256 runs eight
+  waves of known-good code. Eight waves are safe.</li>
+  <li>vadd as one wave hangs on coarse data and on <abbr
+  title="COHERENT memory: the CP's reads, atomics and completion path
+  see the bytes the CPU writes">fine-grained</abbr> data. The data type
+  is not the cause.</li>
+  <li>vload does one <abbr title="a load where each lane reads its own
+  address into a vector register">vector load</abbr>, then a store. It
+  passes.</li>
+  <li>sload does vadd's three <abbr title="a load into scalar
+  registers, one value shared by the whole wave">scalar loads</abbr>,
+  including the 128-bit one. It passes.</li>
+  <li>sdump writes s4..s7, s10, s2 and v0 to memory. It cannot hang,
+  so it runs first.</li>
+  <li>vbranch runs vadd's <abbr title="execute mask: one bit per lane;
+  lanes with a 0 bit do nothing">exec-mask</abbr> sequence and branch
+  with no loads. It passes.</li>
+</ol>
+
+<p>sdump shows that every register vadd depends on is correct: a, b,
+n, the workgroup id and the <abbr title="the index of a work-item
+inside its wave">lane id</abbr>.</p>
 
 <div class="table-scroll">
 <table>
-  <thead><tr><th>kernel</th><th>what it isolates</th><th>result</th></tr></thead>
+  <thead><tr><th>kernel</th><th>what it isolates</th><th>result</th>
+  </tr></thead>
   <tbody>
-    <tr><td>store42 (wg 256)</td><td>8 waves of a known-good kernel</td><td>pass</td></tr>
-    <tr><td>vadd (wg 1)</td><td>vadd code as one wave</td><td>hang</td></tr>
-    <tr><td>vadd (wg 1, fine data)</td><td>coarse vs fine data</td><td>hang</td></tr>
-    <tr><td>vload</td><td>one vector load, then store</td><td>pass</td></tr>
-    <tr><td>sload</td><td>vadd's 3 scalar loads incl. 128-bit</td><td>pass</td></tr>
-    <tr><td>sdump</td><td>dump s4..s7, s10, s2, v0 to memory</td><td>all correct</td></tr>
-    <tr><td>vbranch</td><td>vadd's exec-mask and branch, no loads</td><td>pass</td></tr>
-    <tr><td>vadd2</td><td>vadd using v0..v3 only</td><td>pass</td></tr>
-    <tr><td>v4probe</td><td>vload with the value through v4</td><td>pass</td></tr>
-    <tr><td>vadd16</td><td>vadd bytes, descriptor asks 16 VGPRs</td><td>pass</td></tr>
+    <tr><td>store42 (wg 256)</td><td>8 waves of a known-good kernel</td>
+    <td>pass</td></tr>
+    <tr><td>vadd (wg 1)</td><td>vadd code as one wave</td>
+    <td>hang</td></tr>
+    <tr><td>vadd (wg 1, fine data)</td><td>coarse vs fine data</td>
+    <td>hang</td></tr>
+    <tr><td>vload</td><td>one vector load, then store</td>
+    <td>pass</td></tr>
+    <tr><td>sload</td><td>vadd's 3 scalar loads incl. 128-bit</td>
+    <td>pass</td></tr>
+    <tr><td>sdump</td><td>dump s4..s7, s10, s2, v0 to memory</td>
+    <td>all correct</td></tr>
+    <tr><td>vbranch</td><td>vadd's exec-mask and branch, no loads</td>
+    <td>pass</td></tr>
+    <tr><td>vadd2</td><td>vadd using v0..v3 only</td>
+    <td>pass</td></tr>
+    <tr><td>v4probe</td><td>vload with the value through v4</td>
+    <td>pass</td></tr>
+    <tr><td>vadd16</td><td>vadd bytes, descriptor asks 16 VGPRs</td>
+    <td>pass</td></tr>
   </tbody>
 </table>
 </div>
 
-<p>vadd2 is vadd with the second load in v0 instead of v4. Two dwords
-are the only difference between the two kernels. Their descriptors are
-identical, because 4 and 5 registers encode to the same block: the
-assembler counts VGPRs in blocks of 8 for wave32. vadd2 passed. vadd16
-then took vadd's exact bytes and moved the register field one block
-higher, and it runs. That pair is the proof.</p>
+<p>Two <abbr title="a 32 bit word">dwords</abbr> make the
+difference.</p>
 
-<p>Rule 3 follows: ask the assembler for 8 more VGPRs than the code
-uses. Block 0 does not give a wave five usable registers, whatever the
-encoding says. The limit of the result is honest. v4probe passed alone,
-so one load into v4 does not hang a wave; the failure needs a second
-load in flight. The mechanism stays unknown and the rule is known.</p>
+<p>vadd2 is vadd with the second load in v0 instead of v4. Nothing
+else changes, and vadd2 passes.</p>
 
-<p>Method notes. sdump could not hang, so it ran first, and it showed
-that every register vadd depends on was correct: a, b, n, the workgroup
-id and the lane id. On timeout the harness prints rptr, signal and
-c[0], so even a hang reports whether the packet retired and whether the
-kernel stored. The bisect kernels stay committed under
-<code>src/kernels/</code> as the record. This page cost about eight
-resets.</p>
+<p>Their <abbr title="kernel descriptor: the 64 byte block that holds
+the code offset, register counts and setup for a
+kernel">descriptors</abbr> are identical. The assembler counts <abbr
+title="vector general purpose register: one 32 bit value per
+lane">VGPRs</abbr> in blocks of 8 for <abbr title="the wave size on this GPU: 32
+lanes">wave32</abbr>, so 4 and 5 registers encode to the same
+block.</p>
+
+<p>vadd16 is vadd's exact bytes with the register field one block
+higher. It runs.</p>
+
+<p>Rule 3: ask the assembler for 8 more VGPRs than the code uses.</p>
+
+<p>Block 0 does not give a wave five usable registers, whatever the
+encoding says.</p>
+
+<p>v4probe passes alone, so one load into v4 does not hang a wave. The
+failure needs a second load in flight. The mechanism is not known. The
+rule is.</p>
+
+<p>On timeout the harness prints rptr, signal and c[0]. So a hang still
+reports whether the packet retired and whether the kernel stored.</p>
+
+<p>The bisect kernels are in <code>src/kernels/</code>.</p>
 
 <h2>Sources</h2>
 <ul class="sources">

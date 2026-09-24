@@ -18,21 +18,12 @@
 <p class="lede">A GPU training toolchain for one machine, written down
 so the reasoning survives.</p>
 
-<blockquote>
-<p>"I want to train and work with models more closely, but my hardware
-has some serious limitations. Support is full of gaps and it is not
-obvious how the off-the-shelf software is meant to work; I am
-constantly pinning versions and community forks."</p>
-<cite>the owner</cite>
-</blockquote>
-
-<p>redbluegreen is a GPU training toolchain for one machine, an AMD
-Strix Halo APU. The toolchain is built from the kernel interface up,
-with no GPU userspace under it. The consumer is david: two small
-diffusion models, a graph coupling model over discrete edges and a
-code span model. Both must train in one night on this box. This site
-exists so the owner can re-derive the reasoning behind each decision a
-year on. The voice is a dry lab notebook.</p>
+<p><code>redbluegreen</code> is a GPU training toolchain for the AMD
+<abbr title="the code name of this chip family: a Ryzen AI MAX CPU
+and a Radeon 8060S GPU on one part">Strix Halo</abbr> <abbr
+title="accelerated processing unit: a CPU and a GPU on one
+chip">APU</abbr>. We build it from the kernel interface up with no
+GPU userspace under it.</p>
 
 <figure>
 <svg viewBox="0 0 800 476" role="img" xmlns="http://www.w3.org/2000/svg"
@@ -108,22 +99,47 @@ layers 1 and 2 and the first two kernels; layers 3 to 7 do not exist
 yet.</figcaption>
 </figure>
 
-<p>The layers are kfd and queue; memory; kernels; autograd; optimizer;
-loop; and data resident in GPU memory. Each layer uses only the layer
-below it. Unit 1 talks to the driver with GET_VERSION and ACQUIRE_VM.
-Unit 2 owns memory with ALLOC, MAP and a host view. Unit 3 owns the
-queue: Drop types, an AQL queue and an event. Unit 4 dispatches
-one kernel that writes 42. Unit 5 adds two vectors at
-225 GB/s. Unit 5b survives a pause; the root cause was page tables in
-a full carve-out. Nothing above layer 3 exists yet. The toolchain has
-zero external dependencies at run time. The build needs llvm-mc and
-llvm-objcopy to assemble kernels, and rustc. There are no crates.</p>
+<p>The seven layers, in dependency order:</p>
 
-<p>The price so far is 31 GPU resets on 2026-09-22. Each reset is now
-a rule that is written down, and the owner calls the list "thirty one
-ways not to make a lightbulb". A 27B local model (Qwen) in a coding
-agent wrote the implementation from one-page prompts; the owner ran
-the GPU steps. The pages below take one mechanism each.</p>
+<ol>
+  <li><abbr title="kernel fusion driver: the AMD kernel driver for
+  compute, at /dev/kfd">kfd</abbr> and queue</li>
+  <li>memory</li>
+  <li>kernels</li>
+  <li>autograd</li>
+  <li>optimizer</li>
+  <li>loop</li>
+  <li>data resident in GPU memory</li>
+</ol>
+
+<p>Each layer uses only the layer below it. Nothing above layer 3
+exists yet.</p>
+
+<p>The units so far:</p>
+
+<ol>
+  <li>Talk to the driver: <abbr title="the kfd ioctl that returns
+  the driver interface version">GET_VERSION</abbr> and <abbr
+  title="the kfd ioctl that binds a GPU address space to this
+  process">ACQUIRE_VM</abbr>.</li>
+  <li>Own memory: <abbr title="ALLOC_MEMORY_OF_GPU, the kfd ioctl
+  that makes one GPU allocation">ALLOC</abbr>, <abbr
+  title="MAP_MEMORY_TO_GPU, the kfd ioctl that maps one allocation
+  on a set of GPUs">MAP</abbr> and a host view.</li>
+  <li>Own the queue: <abbr title="the Rust destructor: the method
+  that runs when a value goes out of scope">Drop</abbr> types, an
+  <abbr title="architected queuing language: the 64 byte packet
+  format the GPU command processor reads">AQL</abbr> queue and an
+  event.</li>
+  <li>Dispatch one kernel that writes 42.</li>
+  <li>Add two vectors at 225 GB/s.</li>
+</ol>
+
+<p>The toolchain has zero external dependencies at run time. The
+build needs <abbr title="the LLVM assembler">llvm-mc</abbr> and
+<abbr title="the LLVM tool that copies sections out of an object
+file">llvm-objcopy</abbr> to assemble kernels, and <abbr title="the
+Rust compiler">rustc</abbr>. There are no crates.</p>
 
 <h2>Contents</h2>
 <ol class="toc">
@@ -133,10 +149,12 @@ the GPU steps. The pages below take one mechanism each.</p>
   <li><span class="n">04</span><a href="w/04-queue.html">The queue</a></li>
   <li><span class="n">05</span><a href="w/05-ownership.html">Ownership</a></li>
   <li><span class="n">06</span><a href="w/06-dispatch.html">Dispatch</a></li>
-  <li><span class="n">07</span><a href="w/07-completion.html">Completion</a></li>
+  <li><span class="n">07</span>
+  <a href="w/07-completion.html">Completion</a></li>
   <li><span class="n">08</span><a href="w/08-bandwidth.html">Bandwidth</a></li>
   <li><span class="n">09</span><a href="w/09-bisect.html">The bisect</a></li>
-  <li><span class="n">10</span><a href="w/10-reset.html">The reset chain</a></li>
+  <li><span class="n">10</span>
+  <a href="w/10-reset.html">The reset chain</a></li>
   <li><span class="n">11</span><a href="w/11-method.html">Method</a></li>
 </ol>
 
