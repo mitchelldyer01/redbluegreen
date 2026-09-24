@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Method</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="10-reset.html">prev: The reset chain</a>
+    <a href="../index.html">next: Home</a>
+  </nav>
+</header>
+
+<h1>Method</h1>
+<p class="lede">How the work was done: one-page prompts, a small local
+model in a loop, and a person at every GPU gate.</p>
+
+<figure>
+<svg viewBox="0 0 800 424" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="The working loop: a one-page prompt launches an agent session, the session rewrites STATUS.md, tools/drive either loops again or stops for a person, and the person's GPU run feeds the next prompt and lessons.md.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- the prompt -->
+  <rect x="16" y="24" width="210" height="96" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="30" y="48" fill="var(--fg)" font-size="16">one-page prompt</text>
+  <text x="30" y="70" fill="var(--muted)" font-size="14">facts the driver verified</text>
+  <text x="30" y="88" fill="var(--muted)" font-size="14">goal, verification loop</text>
+  <text x="30" y="106" fill="var(--muted)" font-size="14">handoff</text>
+
+  <line x1="226" y1="72" x2="282" y2="72" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="254" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">launches</text>
+
+  <!-- the agent session, on shared hardware -->
+  <rect x="286" y="24" width="210" height="96" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="300" y="48" fill="var(--fg)" font-size="16">agent session</text>
+  <text x="300" y="70" fill="var(--muted)" font-size="14">a 27B local model (Qwen)</text>
+  <text x="300" y="88" fill="var(--muted)" font-size="14">writes the unit</text>
+  <text x="300" y="106" fill="var(--muted)" font-size="14">shares the GPU</text>
+
+  <line x1="496" y1="72" x2="562" y2="72" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="529" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">rewrites</text>
+
+  <!-- the status file and its four states -->
+  <rect x="566" y="24" width="218" height="124" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="580" y="48" fill="var(--fg)" font-size="16">STATUS.md</text>
+  <text x="580" y="70" fill="var(--muted)" font-size="14">done</text>
+  <text x="580" y="88" fill="var(--muted)" font-size="14">in progress</text>
+  <text x="580" y="106" fill="var(--muted)" font-size="14">ready for GPU test</text>
+  <text x="580" y="124" fill="var(--muted)" font-size="14">blocked</text>
+
+  <line x1="675" y1="148" x2="675" y2="192" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="685" y="176" fill="var(--muted)" font-size="14">reads</text>
+
+  <!-- the driver loop -->
+  <rect x="500" y="196" width="284" height="64" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="514" y="222" fill="var(--fg)" font-size="16">tools/drive decides</text>
+  <text x="514" y="244" fill="var(--muted)" font-size="14">loop again, or stop</text>
+
+  <!-- loop again, back into a new session -->
+  <line x1="500" y1="212" x2="470" y2="212" stroke="var(--ink-arrow)" stroke-width="2"/>
+  <line x1="470" y1="212" x2="470" y2="124" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="460" y="170" text-anchor="end" fill="var(--muted)" font-size="14">loop again</text>
+
+  <!-- or stop for a person -->
+  <line x1="660" y1="260" x2="660" y2="296" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="650" y="284" text-anchor="end" fill="var(--muted)" font-size="14">a person must act</text>
+
+  <rect x="560" y="300" width="224" height="64" fill="none" stroke="var(--fg)" stroke-width="2"/>
+  <text x="574" y="326" fill="var(--fg)" font-size="16">the person</text>
+  <text x="574" y="348" fill="var(--muted)" font-size="14">decides at the gate</text>
+
+  <line x1="556" y1="332" x2="504" y2="332" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="530" y="322" text-anchor="middle" fill="var(--muted)" font-size="14">runs</text>
+
+  <rect x="290" y="300" width="210" height="64" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="304" y="326" fill="var(--fg)" font-size="16">the GPU steps</text>
+  <text x="304" y="348" fill="var(--muted)" font-size="14">one run first</text>
+
+  <line x1="286" y1="332" x2="212" y2="332" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="249" y="322" text-anchor="middle" fill="var(--muted)" font-size="14">gives</text>
+
+  <rect x="16" y="300" width="190" height="64" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="30" y="326" fill="var(--fg)" font-size="16">results</text>
+  <text x="30" y="348" fill="var(--muted)" font-size="14">what the run printed</text>
+
+  <!-- results into the record and into the next prompt -->
+  <line x1="90" y1="300" x2="90" y2="256" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="102" y="282" fill="var(--muted)" font-size="14">records</text>
+
+  <rect x="16" y="196" width="150" height="56" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="30" y="220" fill="var(--fg)" font-size="16">lessons.md</text>
+  <text x="30" y="240" fill="var(--muted)" font-size="14">one rule, dated</text>
+
+  <line x1="200" y1="300" x2="200" y2="124" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="212" y="230" fill="var(--muted)" font-size="14">into the next prompt</text>
+
+  <!-- side note: the context budget -->
+  <text x="286" y="146" fill="var(--muted)" font-size="14">budget: hand off at 40k tokens,</text>
+  <text x="286" y="164" fill="var(--muted)" font-size="14">prompt processing about 200 tokens per second</text>
+
+  <!-- side note: rule 7 -->
+  <text x="16" y="392" fill="var(--muted)" font-size="14">rule 7: an agent never creates a GPU queue,</text>
+  <text x="16" y="410" fill="var(--muted)" font-size="14">because its own model shares the GPU</text>
+</svg>
+<figcaption>One loop: a prompt goes in, STATUS.md comes out, and
+tools/drive either starts the next session or stops for the person who
+owns the GPU.</figcaption>
+</figure>
+
+<p>A 27B local model (Qwen) running in a coding agent wrote the
+implementation, one unit per one-page prompt. A larger model drove:
+it planned the units, verified each fact in kernel and ROCm source,
+reviewed every handoff, and bisected the hangs. The owner ran every
+GPU step by hand and decided at every gate.
+The method exists because the small model has a small context and the
+GPU has no undo.</p>
+
+<p>Docs carry the shape: 80 columns, 60 lines, story shape, and no
+repeat of a fact another page owns. A checker in sh and awk enforces the first two rules; a person reviews the rest. Agent reports
+obey the same rules. AGENTS.md holds the rules that failures bought.
+Read files by line range and pipe build output through tail, because
+context is the scarce resource. Never create a GPU queue from inside
+an agent session, because the agent's own model shares the GPU and a
+hang ends the session. Report a wrong doc fact as stale; never fix
+it or trust it. A prompt is a thin launcher: verified facts, a
+goal, a verification loop, and a handoff that rewrites STATUS.md with
+one of four states: done, in progress, ready for GPU test, blocked.
+tools/drive reads that line and starts the next session until the unit
+is done or a person must act. One extension hands off at 40k context
+tokens instead of compacting, because prompt processing runs at about
+200 tokens per second and a long context costs minutes per turn.
+Another extension nudges the model when a turn ends with reasoning and
+no action. </p>
+
+<p>The rules that cost resets take one line each in docs/lessons.md,
+with the date: EOP required; COHERENT on the CP buffers; 8 spare
+VGPRs; no new mapping while another process is busy; one run first.
+Two facts read from source were wrong for this hardware. Reading finds
+candidates, and only a run settles them.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>AGENTS.md</code></li>
+  <li><code>docs/conventions.md</code></li>
+  <li><code>tools/drive</code></li>
+  <li><code>tools/doclint</code></li>
+  <li><code>docs/lessons.md</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">units 1 to 5b</span></p>
+</footer>
+
+</div>
+</body>
+</html>

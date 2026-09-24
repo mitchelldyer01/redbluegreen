@@ -1,0 +1,78 @@
+<!doctype html>
+<!-- Page template for docs/w/. Copy this file, fill every SLOT,
+     delete nothing else. Conventions: docs/site/diagrams.md for the
+     figure, docs/conventions.md for the prose shape. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- SLOT title: the page name from the contents list -->
+<title>PAGE TITLE</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <!-- SLOT prev: the page before this one, or delete this link -->
+    <a href="NN-prev.html">prev: PREV TITLE</a>
+    <!-- SLOT next: the page after this one, or delete this link -->
+    <a href="NN-next.html">next: NEXT TITLE</a>
+  </nav>
+</header>
+
+<!-- SLOT h1: the same words as the title -->
+<h1>PAGE TITLE</h1>
+<!-- SLOT lede: one sentence saying what the page shows -->
+<p class="lede">ONE SENTENCE.</p>
+
+<!-- SLOT figure: exactly one diagram, one mechanism.
+     Follow docs/site/diagrams.md: viewBox 800 wide, colors only
+     through var(--...), no hex in this file. -->
+<figure>
+<svg viewBox="0 0 800 HEIGHT" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="SAME CLAIM AS THE CAPTION">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+  <!-- shapes here -->
+</svg>
+<!-- SLOT figcaption: one sentence, the claim the picture makes -->
+<figcaption>ONE SENTENCE.</figcaption>
+</figure>
+
+<!-- SLOT prose: why, then what, then what next. Say it once. -->
+<p>WHY THIS MECHANISM EXISTS.</p>
+
+<p>WHAT IT DOES, WITH THE NUMBERS AND THE IOCTL OR FIELD NAMES.</p>
+
+<!-- SLOT table (optional): delete when the page has no measurements -->
+<div class="table-scroll">
+<table>
+  <thead><tr><th>COLUMN</th><th>COLUMN</th></tr></thead>
+  <tbody><tr><td>VALUE</td><td>VALUE</td></tr></tbody>
+</table>
+</div>
+
+<p>WHAT COMES NEXT, OR WHAT IS STILL OPEN.</p>
+
+<h2>Sources</h2>
+<!-- SLOT sources: the repo docs and files this page draws on.
+     Paths are repo-relative. Add one line for each source. -->
+<ul class="sources">
+  <li><code>docs/SOURCE.md</code></li>
+  <li><code>src/SOURCE.rs</code></li>
+</ul>
+
+<footer class="site-foot">
+<!-- SLOT footer badge: the unit that built this, or "open" -->
+<p>redbluegreen wiki. <span class="badge">unit N</span></p>
+</footer>
+
+</div>
+</body>
+</html>

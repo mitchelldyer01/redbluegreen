@@ -1,0 +1,275 @@
+/* redbluegreen wiki. One stylesheet, no build step, no web fonts. */
+
+/* ---- tokens: light is the base, every token is declared here ---- */
+:root {
+  color-scheme: light dark;
+
+  --bg:        #f3f5f7;
+  --surface:   #ffffff;
+  --fg:        #171a1e;
+  --muted:     #525b66;
+  --rule:      #cfd5dc;
+  --link:      #14538f;
+  --link-hover:#0d3a66;
+
+  /* diagram ink and fills: green = our code, blue = driver and
+     hardware, red = kernel (GPU ISA), grey = not yet */
+  --ink-ours:  #16663f;
+  --fill-ours: #dcefe3;
+  --ink-hw:    #1a4f88;
+  --fill-hw:   #dde7f4;
+  --ink-kern:  #9c3322;
+  --fill-kern: #f6e0da;
+  --ink-none:  #5b646e;
+  --fill-none: #eceef1;
+  --ink-arrow: #525b66;
+
+  --gutter: 16px;
+  --measure: 68ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:        #101316;
+    --surface:   #181c21;
+    --fg:        #e6eaef;
+    --muted:     #a6b0bc;
+    --rule:      #2b323a;
+    --link:      #8bb8ee;
+    --link-hover:#b3d2f7;
+
+    --ink-ours:  #5cc78e;
+    --fill-ours: #143224;
+    --ink-hw:    #7cb0ef;
+    --fill-hw:   #16283e;
+    --ink-kern:  #ef8a72;
+    --fill-kern: #3a221c;
+    --ink-none:  #8b95a1;
+    --fill-none: #1d2228;
+    --ink-arrow: #a6b0bc;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg:        #101316;
+  --surface:   #181c21;
+  --fg:        #e6eaef;
+  --muted:     #a6b0bc;
+  --rule:      #2b323a;
+  --link:      #8bb8ee;
+  --link-hover:#b3d2f7;
+
+  --ink-ours:  #5cc78e;
+  --fill-ours: #143224;
+  --ink-hw:    #7cb0ef;
+  --fill-hw:   #16283e;
+  --ink-kern:  #ef8a72;
+  --fill-kern: #3a221c;
+  --ink-none:  #8b95a1;
+  --fill-none: #1d2228;
+  --ink-arrow: #a6b0bc;
+}
+
+/* ---- page ---- */
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+.wrap {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding-inline: var(--gutter);
+  padding-block: 24px 48px;
+}
+
+/* ---- header and nav ---- */
+.site-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 12px;
+  margin-bottom: 28px;
+}
+
+.site-head a.home {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  color: var(--fg);
+}
+
+.site-head a.home:hover { color: var(--link-hover); }
+
+.pager {
+  display: flex;
+  gap: 16px;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+/* ---- type ---- */
+h1 {
+  font-size: 1.9rem;
+  line-height: 1.2;
+  margin: 0 0 8px;
+  text-wrap: balance;
+}
+
+h2 {
+  font-size: 1.2rem;
+  margin: 32px 0 8px;
+  text-wrap: balance;
+}
+
+p { margin: 0 0 16px; }
+
+a { color: var(--link); }
+a:hover { color: var(--link-hover); }
+a:focus-visible,
+.site-head a:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.lede { color: var(--muted); font-size: 0.95rem; margin-bottom: 24px; }
+
+blockquote {
+  margin: 0 0 20px;
+  padding: 4px 0 4px 16px;
+  border-left: 3px solid var(--ink-ours);
+  color: var(--fg);
+}
+
+blockquote p:last-of-type { margin-bottom: 8px; }
+
+blockquote cite {
+  display: block;
+  font-style: normal;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+code, pre {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 0.92em;
+}
+
+pre {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  padding: 12px;
+  overflow-x: auto;
+}
+
+/* ---- unit badge ---- */
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border: 1px solid var(--ink-ours);
+  color: var(--ink-ours);
+  background: var(--fill-ours);
+  white-space: nowrap;
+}
+
+.badge.none {
+  border-color: var(--ink-none);
+  color: var(--ink-none);
+  background: var(--fill-none);
+}
+
+/* ---- diagrams ---- */
+figure {
+  margin: 28px 0;
+}
+
+figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+figcaption {
+  margin-top: 8px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* ---- tables ---- */
+.table-scroll { overflow-x: auto; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+th, td {
+  border-bottom: 1px solid var(--rule);
+  padding: 7px 12px 7px 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+th { font-weight: 600; color: var(--muted); }
+
+/* ---- contents list ---- */
+.toc { list-style: none; margin: 0; padding: 0; }
+
+.toc li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  border-bottom: 1px solid var(--rule);
+  padding: 7px 0;
+}
+
+.toc .n {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.2em;
+}
+
+/* ---- sources ---- */
+.sources { font-size: 0.93rem; color: var(--muted); }
+.sources li { margin-bottom: 4px; }
+
+/* ---- footer ---- */
+footer.site-foot {
+  margin-top: 40px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-size: 0.87rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* ---- terms with a hover tooltip: <abbr title="..."> ---- */
+abbr[title] {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: help;
+}

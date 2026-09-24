@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ownership</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="04-queue.html">prev: The queue</a>
+    <a href="06-dispatch.html">next: Dispatch</a>
+  </nav>
+</header>
+
+<h1>Ownership</h1>
+<p class="lede">Every kernel resource is a type with a Drop, so the
+teardown order comes from the tree and not from the caller.</p>
+
+<figure>
+<svg viewBox="0 0 800 470" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="The Drop tree. Kfd owns the Queue, the Event, the Kernel and the Signal, and Drop runs DESTROY_QUEUE, then the doorbell munmap, then munmap, UNMAP and FREE for each Buffer, and closes the two fds last.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- root -->
+  <rect x="8" y="16" width="784" height="44" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="24" y="44" fill="var(--fg)" font-size="16">Kfd</text>
+  <text x="66" y="44" fill="var(--muted)" font-size="14">two fds, plus the gpu_id</text>
+  <circle cx="600" cy="38" r="10" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="600" y="43" text-anchor="middle" fill="var(--ink-ours)" font-size="14">4</text>
+  <text x="618" y="43" fill="var(--muted)" font-size="14">closes both fds, last</text>
+
+  <!-- root to the two columns -->
+  <line x1="243" y1="60" x2="243" y2="92" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="252" y="82" fill="var(--muted)" font-size="14">owns</text>
+  <line x1="486" y1="60" x2="486" y2="342" stroke="var(--ink-arrow)" stroke-width="2"/>
+  <line x1="486" y1="114" x2="496" y2="114" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <line x1="486" y1="228" x2="496" y2="228" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <line x1="486" y1="342" x2="496" y2="342" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="478" y="82" text-anchor="end" fill="var(--muted)" font-size="14">owns</text>
+
+  <!-- queue -->
+  <rect x="8" y="96" width="470" height="36" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="24" y="120" fill="var(--fg)" font-size="16">Queue</text>
+  <circle cx="232" cy="114" r="10" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="232" y="119" text-anchor="middle" fill="var(--ink-ours)" font-size="14">1</text>
+  <rect x="250" y="100" width="150" height="28" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="325" y="120" text-anchor="middle" fill="var(--fg)" font-size="16">DESTROY_QUEUE</text>
+
+  <!-- doorbell -->
+  <line x1="16" y1="132" x2="16" y2="165" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <line x1="16" y1="165" x2="24" y2="165" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="24" y="150" width="210" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="170" fill="var(--fg)" font-size="16">doorbell mapping</text>
+  <circle cx="252" cy="165" r="10" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="252" y="170" text-anchor="middle" fill="var(--ink-ours)" font-size="14">2</text>
+  <text x="270" y="170" fill="var(--muted)" font-size="14">munmap the doorbell</text>
+
+  <!-- the five buffers -->
+  <path d="M20,192 h-6 v174 h6" fill="none" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="24" y="192" width="160" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="212" fill="var(--fg)" font-size="16">Buffer ring</text>
+  <rect x="24" y="228" width="160" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="248" fill="var(--fg)" font-size="16">Buffer write_ptr</text>
+  <rect x="24" y="264" width="160" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="284" fill="var(--fg)" font-size="16">Buffer read_ptr</text>
+  <rect x="24" y="300" width="160" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="320" fill="var(--fg)" font-size="16">Buffer cwsr</text>
+  <rect x="24" y="336" width="160" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="356" fill="var(--fg)" font-size="16">Buffer eop</text>
+
+  <!-- the borrow -->
+  <path d="M192,195 h6 v30 h-6" fill="none" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <line x1="198" y1="210" x2="382" y2="210" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <text x="290" y="205" text-anchor="middle" fill="var(--muted)" font-size="14">borrow, cannot outlive</text>
+  <rect x="386" y="195" width="88" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="398" y="215" fill="var(--fg)" font-size="16">a slice</text>
+
+  <!-- step three -->
+  <circle cx="30" cy="388" r="10" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="30" y="393" text-anchor="middle" fill="var(--ink-ours)" font-size="14">3</text>
+  <text x="48" y="393" fill="var(--muted)" font-size="14">each Buffer: munmap, UNMAP,</text>
+  <rect x="254" y="375" width="62" height="26" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="285" y="393" text-anchor="middle" fill="var(--fg)" font-size="16">FREE</text>
+
+  <!-- event -->
+  <rect x="500" y="96" width="292" height="36" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="516" y="120" fill="var(--fg)" font-size="16">Event</text>
+  <line x1="508" y1="132" x2="508" y2="157" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <line x1="508" y1="157" x2="516" y2="157" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="516" y="142" width="200" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="528" y="162" fill="var(--fg)" font-size="16">the event page</text>
+  <text x="516" y="192" fill="var(--muted)" font-size="14">Drop: munmap, then DESTROY</text>
+
+  <!-- kernel -->
+  <rect x="500" y="210" width="292" height="36" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="516" y="234" fill="var(--fg)" font-size="16">Kernel</text>
+  <line x1="508" y1="246" x2="508" y2="271" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <line x1="508" y1="271" x2="516" y2="271" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="516" y="256" width="200" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="528" y="276" fill="var(--fg)" font-size="16">one Buffer</text>
+  <text x="516" y="306" fill="var(--muted)" font-size="14">descriptor plus code, step 3</text>
+
+  <!-- signal -->
+  <rect x="500" y="324" width="292" height="36" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="516" y="348" fill="var(--fg)" font-size="16">Signal</text>
+  <line x1="508" y1="360" x2="508" y2="385" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <line x1="508" y1="385" x2="516" y2="385" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="516" y="370" width="200" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="528" y="390" fill="var(--fg)" font-size="16">one Buffer</text>
+  <text x="516" y="420" fill="var(--muted)" font-size="14">a 64 byte struct, step 3</text>
+
+  <!-- legend -->
+  <rect x="8" y="436" width="22" height="18" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="450" fill="var(--muted)" font-size="14">our code</text>
+  <rect x="140" y="436" width="22" height="18" rx="6" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="168" y="450" fill="var(--muted)" font-size="14">driver call</text>
+  <circle cx="290" cy="445" r="10" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="290" y="450" text-anchor="middle" fill="var(--ink-ours)" font-size="14">1</text>
+  <text x="308" y="450" fill="var(--muted)" font-size="14">drop order, 1 to 4</text>
+</svg>
+<figcaption>Each type owns the resources under it, so Drop runs
+DESTROY_QUEUE, then the doorbell munmap, then munmap, UNMAP and FREE
+for every Buffer, and closes the two fds last.</figcaption>
+</figure>
+
+<p>Drop is the method Rust runs when a value goes out of scope. In
+unit 3 every kernel resource became a type with a Drop, so the types
+carry the teardown order and the caller no longer has to remember it.
+The owner named ownership the theme of the unit.</p>
+
+<p>Kfd holds the two fds and the gpu_id, and its Drop closes both fds.
+Buffer holds a va, a size, a handle, flags and a view_mapped bit; its
+Drop does munmap, UNMAP and FREE. A Drop cannot fail, so an error
+inside it prints to stderr and the work goes on. as_slice_mut borrows
+through the Buffer, so a slice cannot outlive the memory behind it,
+and remap drops the host view and retakes it. Queue owns the ring,
+write_ptr, read_ptr, cwsr and eop Buffers with the doorbell mapping;
+its Drop sends DESTROY_QUEUE, munmaps the doorbell, and then lets the
+Buffers drop in declaration order. Event owns an event id and its
+page. Kernel and Signal each hold one Buffer.</p>
+
+<p>Every syscall returns Result&lt;T, Error&gt;. The Error carries the
+call name and the errno, and it prints as "call: message". main prints
+it and exits 1. There is no die().</p>
+
+<p>This mattered because the flat functions of unit 2 leaked a handle
+on any early exit until the process ended. A leak of 1 MiB is nothing.
+A training run keeps a corpus of gigabytes resident, and a GPU hang on
+this APU takes the desktop with it. Ownership is the cheapest guard,
+and it is the reason Rust was chosen over C. Two runs prove that Drop
+runs on the error path: the too-small CWSR run, which got EINVAL from
+the kernel, exited 1 and left GTT unchanged, and the forced verify
+failure in unit 2.</p>
+
+<p>Nesting gives the order for free. A Queue drops its own fields
+first and then its Buffers, so DESTROY_QUEUE always runs before the
+ring memory is freed. The next page dispatches a kernel into this
+queue.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/language.md</code></li>
+  <li><code>src/kfd.rs</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 3</span></p>
+</footer>
+
+</div>
+</body>
+</html>

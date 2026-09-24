@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The box</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="../index.html">prev: Home</a>
+    <a href="02-floor.html">next: The floor</a>
+  </nav>
+</header>
+
+<h1>The box</h1>
+<p class="lede">The one machine this toolchain is written for, and the
+memory map the GPU sees.</p>
+
+<figure>
+<svg viewBox="0 0 800 424" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="The GPU maps 96 GiB of the 125 GiB unified pool at 225 GB/s, and its page tables live in the full 512 MiB carve-out.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- the unified pool, drawn to scale: 125 GiB across the frame -->
+  <text x="8" y="24" fill="var(--muted)" font-size="14">system RAM, 125 GiB, one unified pool</text>
+  <rect x="8" y="32" width="784" height="56" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <line x1="610" y1="32" x2="610" y2="88" stroke="var(--ink-hw)" stroke-width="1.5"/>
+  <text x="24" y="58" fill="var(--fg)" font-size="16">GTT window, 96 GiB</text>
+  <text x="24" y="78" fill="var(--muted)" font-size="14">the GPU may map this</text>
+  <text x="622" y="58" fill="var(--muted)" font-size="14">29 GiB</text>
+  <text x="622" y="78" fill="var(--muted)" font-size="14">CPU only</text>
+
+  <!-- one page, mapped once, seen by both -->
+  <line x1="400" y1="190" x2="400" y2="94" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="392" y="146" text-anchor="end" fill="var(--muted)" font-size="14">maps</text>
+
+  <!-- the GPU to RAM path -->
+  <line x1="740" y1="192" x2="740" y2="94" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="732" y="120" text-anchor="end" fill="var(--muted)" font-size="14">streams at</text>
+  <text x="732" y="146" text-anchor="end" fill="var(--muted)" font-size="14">256 GB/s theoretical</text>
+  <text x="732" y="166" text-anchor="end" fill="var(--muted)" font-size="14">225 GB/s measured</text>
+
+  <!-- the two readers and the address they share -->
+  <rect x="8" y="196" width="190" height="52" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="103" y="228" text-anchor="middle" fill="var(--fg)" font-size="16">CPU, 32 threads</text>
+  <rect x="270" y="194" width="260" height="56" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="400" y="228" text-anchor="middle" fill="var(--fg)" font-size="16">one virtual address</text>
+  <text x="400" y="268" text-anchor="middle" fill="var(--ink-ours)" font-size="14">rbg maps it once, at start</text>
+  <rect x="602" y="196" width="190" height="52" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="697" y="228" text-anchor="middle" fill="var(--fg)" font-size="16">GPU, gfx1151</text>
+  <line x1="206" y1="222" x2="262" y2="222" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="234" y="212" text-anchor="middle" fill="var(--muted)" font-size="14">writes</text>
+  <line x1="594" y1="222" x2="538" y2="222" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="566" y="212" text-anchor="middle" fill="var(--muted)" font-size="14">reads</text>
+
+  <!-- the carve-out, drawn much larger than its share of the pool -->
+  <text x="8" y="290" fill="var(--muted)" font-size="14">VRAM carve-out, 512 MiB, drawn to a much larger scale</text>
+  <rect x="8" y="298" width="200" height="60" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <rect x="14" y="304" width="174" height="48" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="101" y="334" text-anchor="middle" fill="var(--ink-kern)" font-size="14">held, 90 percent</text>
+  <text x="230" y="314" fill="var(--muted)" font-size="14">the desktop holds about 90 percent of it</text>
+  <text x="230" y="336" fill="var(--ink-kern)" font-size="14">GPU page tables are allocated here</text>
+  <text x="230" y="358" fill="var(--muted)" font-size="14">amdgpu_vm_pt.c: only app APUs use system RAM</text>
+
+  <!-- legend -->
+  <rect x="8" y="388" width="22" height="18" rx="6" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="36" y="402" fill="var(--muted)" font-size="14">driver and hardware</text>
+  <rect x="220" y="388" width="22" height="18" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="248" y="402" fill="var(--muted)" font-size="14">our code</text>
+  <rect x="360" y="388" width="22" height="18" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="388" y="402" fill="var(--muted)" font-size="14">kernel</text>
+</svg>
+<figcaption>The GPU maps 96 GiB of the 125 GiB unified pool at
+225 GB/s, and its page tables live in the full 512 MiB carve-out.</figcaption>
+</figure>
+
+<p>The design of <code>redbluegreen</code> targets a machine where
+the CPU and the GPU share a single unified pool of memory. The two
+reach a buffer through the same virtual address. The pool is system
+RAM, so the machine is capacity-rich and bandwidth-poor. This lets the
+machine host large models in memory, but then run slowly, because
+each weight arrives at memory speed. This bottleneck is also true for
+training.</p>
+
+<p>The machine is abundant in compute, but its pathway to the memory
+is narrow.</p>
+
+<p>On boot, the driver gives the GPU a <abbr title="graphics
+translation table: the part of system RAM the GPU may map">GTT</abbr>
+window into the unified memory pool. The CPU owns the rest of the
+pool. Firmware carves out a small amount of <abbr title="video RAM:
+memory reserved for the GPU alone">VRAM</abbr>. On this chip the
+kernel puts the GPU page tables in that carve-out, because
+amdgpu_vm_pt.c uses system memory for them only on app <abbr
+title="accelerated processing unit: a CPU and a GPU on one
+chip">APUs</abbr>, and this part is not one.</p>
+
+<p>The desktop keeps the carve-out near full. A new mapping made
+while another process runs on the GPU can evict that process's
+buffer, and that ends in a reset. The reset page gives the full
+chain.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Quantity</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>System RAM, unified</td><td>125 GiB</td></tr>
+    <tr><td>GTT window the GPU may map</td><td>96 GiB</td></tr>
+    <tr><td>VRAM carve-out</td><td>512 MiB</td></tr>
+    <tr><td>Carve-out held by the desktop</td><td>about 90 percent</td></tr>
+    <tr><td>Bandwidth, theoretical</td><td>256 GB/s</td></tr>
+    <tr><td>Bandwidth, measured on a streaming load</td><td>225 GB/s</td></tr>
+    <tr><td>CPU threads</td><td>32</td></tr>
+    <tr><td>Compute units, <abbr title="a wave is 32 work-items
+    that run one instruction together">wave32</abbr></td>
+    <td>40, with 80 <abbr title="single instruction, multiple data:
+    one vector lane group that runs a wave">SIMDs</abbr></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>So, our approach to training falls into three rules so far:</p>
+
+<ol>
+  <li>Wide batches: one read of a weight feeds many samples.</li>
+  <li>Training data in GPU memory: a disk read inside the loop costs
+  more than it returns.</li>
+  <li>The CPU pre-processes in parallel: threads prepare the next
+  batch while the GPU processes the current one.</li>
+</ol>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/birdseye.md</code></li>
+  <li><code>docs/lessons.md</code></li>
+  <li><code>drivers/gpu/drm/amd/amdgpu/amdgpu_vm_pt.c</code>, for the
+  page-table placement</li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 1</span></p>
+</footer>
+
+</div>
+</body>
+</html>

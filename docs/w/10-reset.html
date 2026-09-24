@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The reset chain</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="09-bisect.html">prev: The bisect</a>
+    <a href="11-method.html">next: Method</a>
+  </nav>
+</header>
+
+<h1>The reset chain</h1>
+<p class="lede">One new GPU mapping, made while another process was
+busy, walked a chain of seven steps to a GPU reset.</p>
+
+<figure>
+<svg viewBox="0 0 800 420" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="A new GPU mapping made during a local model server's generation runs a chain from page-table allocation in a full VRAM carve-out to a GPU reset that kills both processes.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- row 1: our mapping, the driver's page tables, the carve-out -->
+  <rect x="8" y="28" width="232" height="56" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="24" y="52" fill="var(--fg)" font-size="16">our process maps</text>
+  <text x="24" y="72" fill="var(--fg)" font-size="16">new GPU memory</text>
+
+  <line x1="240" y1="56" x2="294" y2="56" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="267" y="46" text-anchor="middle" fill="var(--muted)" font-size="14">needs</text>
+
+  <rect x="294" y="28" width="232" height="56" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="310" y="52" fill="var(--fg)" font-size="16">the driver takes</text>
+  <text x="310" y="72" fill="var(--fg)" font-size="16">page-table pages</text>
+
+  <line x1="526" y1="56" x2="580" y2="56" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="553" y="46" text-anchor="middle" fill="var(--muted)" font-size="14">sit in</text>
+
+  <text x="584" y="24" fill="var(--fg)" font-size="14">512 MiB VRAM carve-out</text>
+  <rect x="584" y="34" width="208" height="30" fill="none" stroke="var(--ink-hw)" stroke-width="2"/>
+  <rect x="584" y="34" width="190" height="30" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="584" y="82" fill="var(--muted)" font-size="14">468 MiB held by the</text>
+  <text x="584" y="98" fill="var(--muted)" font-size="14">desktop, 44 MiB free</text>
+
+  <path d="M 688 110 V 122 H 122 V 138" fill="none" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="405" y="116" text-anchor="middle" fill="var(--muted)" font-size="14">so the driver makes room</text>
+
+  <!-- row 2: the eviction and the pause it asks for -->
+  <rect x="8" y="142" width="228" height="56" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="24" y="166" fill="var(--fg)" font-size="16">TTM evicts a local</text>
+  <text x="24" y="186" fill="var(--fg)" font-size="16">server buffer</text>
+
+  <line x1="236" y1="170" x2="284" y2="170" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="260" y="160" text-anchor="middle" fill="var(--muted)" font-size="14">trips</text>
+
+  <rect x="284" y="142" width="228" height="56" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="300" y="166" fill="var(--fg)" font-size="16">its eviction fence</text>
+  <text x="300" y="186" fill="var(--fg)" font-size="16">pauses that process</text>
+
+  <line x1="512" y1="170" x2="560" y2="170" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="536" y="160" text-anchor="middle" fill="var(--muted)" font-size="14">sends</text>
+
+  <rect x="560" y="142" width="228" height="56" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="576" y="166" fill="var(--fg)" font-size="16">REMOVE_QUEUE</text>
+  <text x="576" y="186" fill="var(--fg)" font-size="16">through MES</text>
+
+  <path d="M 674 202 V 214 H 122 V 230" fill="none" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="400" y="208" text-anchor="middle" fill="var(--muted)" font-size="14">but the server queue runs a kernel</text>
+
+  <!-- row 3: the pause misses, the driver resets -->
+  <rect x="8" y="234" width="228" height="56" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="24" y="258" fill="var(--fg)" font-size="16">MES cannot pause</text>
+  <text x="24" y="278" fill="var(--fg)" font-size="16">it in time</text>
+
+  <line x1="236" y1="262" x2="284" y2="262" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="260" y="252" text-anchor="middle" fill="var(--muted)" font-size="14">forces</text>
+
+  <rect x="284" y="234" width="228" height="56" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="300" y="258" fill="var(--ink-kern)" font-size="16">the driver resets</text>
+  <text x="300" y="278" fill="var(--ink-kern)" font-size="16">the GPU</text>
+
+  <line x1="512" y1="262" x2="560" y2="262" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="536" y="252" text-anchor="middle" fill="var(--muted)" font-size="14">kills</text>
+
+  <rect x="560" y="234" width="228" height="56" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="576" y="268" fill="var(--ink-kern)" font-size="16">both processes</text>
+
+  <!-- the eight experiments, in order -->
+  <text x="8" y="330" fill="var(--muted)" font-size="14">the eight experiments, in order</text>
+
+  <text x="60" y="348" text-anchor="middle" fill="var(--ink-ours)" font-size="14">pass</text>
+  <circle cx="60" cy="366" r="12" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="60" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">two</text>
+
+  <text x="156" y="348" text-anchor="middle" fill="var(--ink-ours)" font-size="14">pass</text>
+  <circle cx="156" cy="366" r="12" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="156" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">twelve</text>
+
+  <text x="252" y="348" text-anchor="middle" fill="var(--ink-ours)" font-size="14">pass</text>
+  <circle cx="252" cy="366" r="12" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="252" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">idle</text>
+
+  <text x="348" y="348" text-anchor="middle" fill="var(--ink-ours)" font-size="14">pass</text>
+  <circle cx="348" cy="366" r="12" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="348" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">add-first</text>
+
+  <text x="444" y="348" text-anchor="middle" fill="var(--ink-kern)" font-size="14">fail</text>
+  <circle cx="444" cy="366" r="12" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="444" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">created</text>
+
+  <text x="540" y="348" text-anchor="middle" fill="var(--ink-kern)" font-size="14">fail</text>
+  <circle cx="540" cy="366" r="12" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="540" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">header</text>
+
+  <text x="636" y="348" text-anchor="middle" fill="var(--ink-kern)" font-size="14">fail</text>
+  <circle cx="636" cy="366" r="12" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="636" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">runtime</text>
+
+  <text x="732" y="348" text-anchor="middle" fill="var(--ink-kern)" font-size="14">fail</text>
+  <circle cx="732" cy="366" r="12" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="732" y="394" text-anchor="middle" fill="var(--muted)" font-size="14">one-element</text>
+</svg>
+<figcaption>A new mapping made while a local model server generates
+runs a seven-step chain from page tables in a full carve-out to a GPU
+reset that kills both processes.</figcaption>
+</figure>
+
+<p>The symptom was narrow. A queue created while a local model server
+was generating never ran, and the GPU reset two to three seconds in.
+Our own code looked correct, so the first job was to find the faulty
+half.</p>
+
+<p>Eight experiments, one reset at most each, in order. Two of our
+processes at once, 64M and 1000 reps: both finish. Twelve at once: all
+finish, with the bandwidth shared. The server up but idle: a 64M add
+at full speed. The add started first and the server generating mid
+run, 20000 reps: all results verify at half speed. That run proves our
+queues survive pauses; the twelve-process run proves it twice. Then the failures. A queue created during generation
+hangs and resets the GPU. The same follows with the context save
+header filled, with RUNTIME_ENABLE, and with 1-element buffers, where
+the queue ran its first packet before the reset came. Every kernel log
+named the server queue as the one the driver failed to evict, and the
+server as the process it failed to suspend.</p>
+
+<p>The driver source gives the chain. Page tables are allocated in
+VRAM on this chip, and only app APUs use system memory. A new mapping
+needs page-table pages, so TTM evicts another process's VRAM buffer.
+A kfd buffer carries an eviction fence, so evicting it means pausing
+that process's queues with REMOVE_QUEUE through MES. MES cannot pause
+a mid-kernel queue in time, the driver declares MES unrecoverable, and
+both processes die.</p>
+
+<p>Three candidate fixes were wrong for one reason. The context save
+header, the executable flag on the save area, and RUNTIME_ENABLE all
+concern pausing our queue, which was never the queue being paused.
+Rule 4 follows: allocate every GPU buffer at start, never inside a
+loop, never while another process is busy.</p>
+
+<p>The reset history agrees. One reset on the first day, 31 on the
+second, none in the 30 days before, and every one was ours. The
+scheduler gives 10 ms per process and 1 ms per gang; the
+twelve-process pass shows our waves survive that switching.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/lessons.md</code></li>
+  <li><code>amdgpu_vm_pt.c</code></li>
+  <li><code>amdgpu_amdkfd_gpuvm.c</code></li>
+  <li><code>kfd_device_queue_manager.c</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 2</span></p>
+</footer>
+
+</div>
+</body>
+</html>

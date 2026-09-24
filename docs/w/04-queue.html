@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The queue</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="03-memory.html">prev: Memory</a>
+    <a href="05-ownership.html">next: Ownership</a>
+  </nav>
+</header>
+
+<h1>The queue</h1>
+<p class="lede">What one AQL compute queue is made of, and why the
+kernel makes it five separate allocations.</p>
+
+<figure>
+<svg viewBox="0 0 800 560" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="One AQL queue is five exactly sized allocations plus a doorbell page; our code writes the packet and rings the doorbell, and the CP runs the packet.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- the two actors -->
+  <rect x="8" y="8" width="170" height="40" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="24" y="34" fill="var(--fg)" font-size="16">our code</text>
+  <rect x="622" y="8" width="170" height="40" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="638" y="34" fill="var(--fg)" font-size="16">the CP</text>
+
+  <!-- allocation 1: the ring -->
+  <rect x="210" y="40" width="340" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="226" y="62" fill="var(--fg)" font-size="16">ring</text>
+  <text x="540" y="62" text-anchor="end" fill="var(--muted)" font-size="14">64 KiB · COHERENT · EXEC</text>
+  <rect x="226" y="72" width="30" height="30" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="241" y="93" text-anchor="middle" fill="var(--ink-none)" font-size="14">1</text>
+  <rect x="260" y="72" width="30" height="30" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="275" y="93" text-anchor="middle" fill="var(--ink-none)" font-size="14">1</text>
+  <rect x="294" y="72" width="30" height="30" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="309" y="93" text-anchor="middle" fill="var(--fg)" font-size="14">pkt</text>
+  <rect x="328" y="72" width="30" height="30" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="343" y="93" text-anchor="middle" fill="var(--ink-none)" font-size="14">1</text>
+  <text x="368" y="93" fill="var(--muted)" font-size="14">64-byte slots</text>
+  <text x="226" y="126" fill="var(--muted)" font-size="14">header 1 = INVALID, one packet written</text>
+
+  <!-- allocation 2: the write pointer -->
+  <rect x="210" y="156" width="340" height="48" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="226" y="186" fill="var(--fg)" font-size="16">write pointer</text>
+  <text x="540" y="186" text-anchor="end" fill="var(--muted)" font-size="14">4 KiB · COHERENT</text>
+
+  <!-- allocation 3: the read pointer -->
+  <rect x="210" y="220" width="340" height="48" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="226" y="250" fill="var(--fg)" font-size="16">read pointer</text>
+  <text x="540" y="250" text-anchor="end" fill="var(--muted)" font-size="14">4 KiB · COHERENT</text>
+
+  <!-- allocation 4: the CWSR area -->
+  <rect x="210" y="284" width="340" height="62" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="226" y="320" fill="var(--fg)" font-size="16">CWSR area</text>
+  <rect x="310" y="294" width="100" height="24" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="360" y="311" text-anchor="middle" fill="var(--fg)" font-size="14">header</text>
+  <text x="540" y="320" text-anchor="end" fill="var(--muted)" font-size="14">18 MiB · coarse</text>
+
+  <!-- allocation 5: the EOP buffer -->
+  <rect x="210" y="362" width="340" height="48" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="226" y="392" fill="var(--fg)" font-size="16">EOP buffer</text>
+  <text x="540" y="392" text-anchor="end" fill="var(--muted)" font-size="14">4 KiB · coarse · EXEC</text>
+
+  <!-- the doorbell page -->
+  <rect x="210" y="426" width="340" height="62" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="226" y="452" fill="var(--fg)" font-size="16">doorbell page</text>
+  <rect x="310" y="434" width="110" height="24" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="365" y="451" text-anchor="middle" fill="var(--fg)" font-size="14">doorbell u64</text>
+  <text x="540" y="452" text-anchor="end" fill="var(--muted)" font-size="14">8 KiB page</text>
+  <text x="540" y="476" text-anchor="end" fill="var(--muted)" font-size="14">offset = page bits + low 13 bits</text>
+
+  <!-- what our code does -->
+  <path d="M140,48 V90 H206" fill="none" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="146" y="84" fill="var(--muted)" font-size="14">writes packet</text>
+  <path d="M90,48 V180 H206" fill="none" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="96" y="174" fill="var(--muted)" font-size="14">writes</text>
+  <path d="M40,48 V452 H206" fill="none" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="46" y="446" fill="var(--muted)" font-size="14">rings</text>
+
+  <!-- what the CP does -->
+  <path d="M650,48 V120 H554" fill="none" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="644" y="114" text-anchor="end" fill="var(--muted)" font-size="14">runs packets</text>
+  <path d="M700,48 V180 H554" fill="none" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="694" y="174" text-anchor="end" fill="var(--muted)" font-size="14">polls</text>
+  <path d="M750,48 V244 H554" fill="none" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="744" y="238" text-anchor="end" fill="var(--muted)" font-size="14">advances</text>
+
+  <text x="210" y="506" fill="var(--muted)" font-size="14">each buffer is its own allocation, sized exactly</text>
+
+  <!-- legend -->
+  <rect x="8" y="520" width="22" height="18" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="534" fill="var(--muted)" font-size="14">our code</text>
+  <rect x="150" y="520" width="22" height="18" rx="6" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="178" y="534" fill="var(--muted)" font-size="14">driver and hardware</text>
+  <rect x="380" y="520" width="22" height="18" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="408" y="534" fill="var(--muted)" font-size="14">INVALID slot</text>
+</svg>
+<figcaption>One AQL queue is five exactly sized allocations plus a
+doorbell page; our code writes the packet and rings the doorbell, and
+the CP runs the packet.</figcaption>
+</figure>
+
+<p>A queue is five buffers and one ioctl.</p>
+
+<p>The kernel counts bytes. Each buffer must be the start of its own
+allocation, and the allocation size must equal the expected size
+exactly. So we make five separate <abbr title="ALLOC_MEMORY_OF_GPU,
+the kfd ioctl that makes one GPU allocation">ALLOC</abbr> calls, each
+sized to the byte, plus a <abbr title="an 8 KiB page of doorbell
+registers, mapped on the kfd fd">doorbell page</abbr>.</p>
+
+<p>The five buffers:</p>
+
+<ol>
+  <li>The <abbr title="the circular buffer of 64 byte packets that
+  the command processor reads">ring</abbr> holds the packets. Every
+  slot starts with the header for <abbr title="packet header value
+  1: the command processor waits on it and never runs
+  it">INVALID</abbr>, so a half-written packet never runs.</li>
+  <li>The <abbr title="the index of the next free packet slot; the
+  scheduler polls it">write pointer</abbr> gets its own page. Our
+  code advances it.</li>
+  <li>The <abbr title="the index of the next packet the hardware will
+  run">read pointer</abbr> gets its own page. The hardware advances
+  it as packets retire.</li>
+  <li>The <abbr title="compute wave save restore: the area where the
+  hardware saves a paused queue's wave state">CWSR</abbr> area is the
+  context save area. Its size comes from the sysfs node properties.
+  </li>
+  <li>The <abbr title="end of pipe: the buffer the command processor
+  uses for its end-of-pipe events">EOP</abbr> buffer is optional to
+  the ioctl and required by the hardware. Without it, the first
+  <abbr title="the MES call that pauses and unmaps a hardware
+  queue">REMOVE_QUEUE</abbr> hangs <abbr title="micro engine
+  scheduler: the GPU firmware that owns the hardware
+  queues">MES</abbr> and resets the GPU.</li>
+</ol>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>buffer</th><th>size</th><th>flags</th>
+  <th>who writes it</th></tr></thead>
+  <tbody>
+    <tr><td>ring</td><td>65536</td><td>COHERENT, EXECUTABLE</td>
+    <td>our code</td></tr>
+    <tr><td>write pointer</td><td>4096</td><td>COHERENT</td>
+    <td>our code</td></tr>
+    <tr><td>read pointer</td><td>4096</td><td>COHERENT</td>
+    <td>hardware</td></tr>
+    <tr><td>CWSR area</td><td>19226624</td><td>coarse</td>
+    <td>our code, then hardware</td></tr>
+    <tr><td>EOP buffer</td><td>4096</td><td>coarse, EXECUTABLE</td>
+    <td>hardware</td></tr>
+    <tr><td>doorbell page</td><td>8192</td><td>mmap on the kfd fd</td>
+    <td>our code</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The doorbell is the contract.</p>
+
+<p><abbr title="the kfd ioctl that makes one hardware queue from the
+five buffers">CREATE_QUEUE</abbr> returns an offset. The high bits
+name a doorbell page. The low bits name this queue's <abbr
+title="one 64 bit word">u64</abbr> inside that page. Writing the
+packet index there starts the hardware.</p>
+
+<p>The <abbr title="command processor: the GPU front end that reads
+packets and launches kernels">CP</abbr> also polls the write pointer
+while memory is coherent, so a packet can run without a doorbell
+write. Ring it anyway.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>field</th><th>value</th></tr></thead>
+  <tbody>
+    <tr><td>CREATE_QUEUE</td><td>nr 0x02, 96 bytes</td></tr>
+    <tr><td>doorbell_offset</td>
+    <td>page bits, then the low 13 bits</td></tr>
+    <tr><td>CWSR size</td>
+    <td>sysfs cwsr_size plus a debug region</td></tr>
+    <tr><td>last field</td>
+    <td>pad in the 6.19 header, metadata_ring_size in 7.0</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>The last CREATE_QUEUE field has one name in the header on disk and
+another in the running kernel. Zero is correct either way.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/queue.md</code></li>
+  <li><code>docs/lessons.md</code></li>
+  <li><code>kfd_queue.c</code></li>
+  <li><code>kfd_mqd_manager_v11.c</code></li>
+  <li>libhsakmt <code>queues.c</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 3</span></p>
+</footer>
+
+</div>
+</body>
+</html>

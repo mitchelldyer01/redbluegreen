@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The bisect</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="08-bandwidth.html">prev: Bandwidth</a>
+    <a href="10-reset.html">next: The reset chain</a>
+  </nav>
+</header>
+
+<h1>The bisect</h1>
+<p class="lede">Ten one-question kernels that turned a vadd hang into a
+rule about VGPR blocks.</p>
+
+<figure>
+<svg viewBox="0 0 800 648" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="Ten bisect kernels, each answering one question, narrowed a vadd hang down to the VGPR count in the kernel descriptor.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- root: the symptom, as the hardware reported it -->
+  <rect x="8" y="16" width="470" height="44" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="24" y="43" fill="var(--fg)" font-size="16">vadd hangs: rptr 0, signal 1, no store</text>
+
+  <!-- the spine: the order the experiments ran in -->
+  <line x1="48" y1="60" x2="48" y2="548" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="34" y="300" transform="rotate(-90 34 300)" text-anchor="middle" fill="var(--ink-arrow)" font-size="14">asks next</text>
+
+  <!-- row 0 -->
+  <line x1="48" y1="99" x2="76" y2="99" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="84" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="104" fill="var(--ink-kern)" font-size="16">store42 wg 256</text>
+  <text x="298" y="104" fill="var(--muted)" font-size="14">8 waves of known-good code?</text>
+  <path d="M600,98 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="622" y="104" fill="var(--ink-ours)" font-size="14">pass</text>
+
+  <!-- row 1 -->
+  <line x1="48" y1="145" x2="76" y2="145" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="130" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="150" fill="var(--ink-kern)" font-size="16">vadd wg 1</text>
+  <text x="298" y="150" fill="var(--muted)" font-size="14">vadd code as one wave?</text>
+  <line x1="600" y1="139" x2="613" y2="152" stroke="var(--ink-kern)" stroke-width="2"/>
+  <line x1="613" y1="139" x2="600" y2="152" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="622" y="150" fill="var(--ink-kern)" font-size="14">hang</text>
+
+  <!-- row 2 -->
+  <line x1="48" y1="191" x2="76" y2="191" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="176" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="196" fill="var(--ink-kern)" font-size="16">vadd fine data</text>
+  <text x="298" y="196" fill="var(--muted)" font-size="14">coarse or fine data?</text>
+  <line x1="600" y1="185" x2="613" y2="198" stroke="var(--ink-kern)" stroke-width="2"/>
+  <line x1="613" y1="185" x2="600" y2="198" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="622" y="196" fill="var(--ink-kern)" font-size="14">hang</text>
+
+  <!-- row 3 -->
+  <line x1="48" y1="237" x2="76" y2="237" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="222" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="242" fill="var(--ink-kern)" font-size="16">vload</text>
+  <text x="298" y="242" fill="var(--muted)" font-size="14">one vector load, then store?</text>
+  <path d="M600,236 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="622" y="242" fill="var(--ink-ours)" font-size="14">pass</text>
+
+  <!-- row 4 -->
+  <line x1="48" y1="283" x2="76" y2="283" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="268" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="288" fill="var(--ink-kern)" font-size="16">sload</text>
+  <text x="298" y="288" fill="var(--muted)" font-size="14">3 scalar loads, one 128-bit?</text>
+  <path d="M600,282 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="622" y="288" fill="var(--ink-ours)" font-size="14">pass</text>
+
+  <!-- row 5 -->
+  <line x1="48" y1="329" x2="76" y2="329" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="314" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="334" fill="var(--ink-kern)" font-size="16">sdump</text>
+  <text x="298" y="334" fill="var(--muted)" font-size="14">all registers correct?</text>
+  <path d="M600,328 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="622" y="334" fill="var(--ink-ours)" font-size="14">pass</text>
+
+  <!-- row 6 -->
+  <line x1="48" y1="375" x2="76" y2="375" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="360" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="380" fill="var(--ink-kern)" font-size="16">vbranch</text>
+  <text x="298" y="380" fill="var(--muted)" font-size="14">exec mask and branch, no loads?</text>
+  <path d="M600,374 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="622" y="380" fill="var(--ink-ours)" font-size="14">pass</text>
+
+  <!-- row 7 -->
+  <line x1="48" y1="421" x2="76" y2="421" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="406" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="426" fill="var(--ink-kern)" font-size="16">vadd2</text>
+  <text x="298" y="426" fill="var(--muted)" font-size="14">vadd using v0 to v3 only?</text>
+  <path d="M600,420 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="622" y="426" fill="var(--ink-ours)" font-size="14">pass</text>
+
+  <!-- annotation: the whole difference between row 1 and row 7 -->
+  <line x1="762" y1="145" x2="778" y2="145" stroke="var(--muted)" stroke-width="1.5"/>
+  <line x1="762" y1="421" x2="778" y2="421" stroke="var(--muted)" stroke-width="1.5"/>
+  <line x1="770" y1="145" x2="770" y2="421" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 6"/>
+  <text x="764" y="283" transform="rotate(-90 764 283)" text-anchor="middle" fill="var(--muted)" font-size="14">two dwords differ</text>
+
+  <!-- row 8 -->
+  <line x1="48" y1="467" x2="76" y2="467" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="452" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="472" fill="var(--ink-kern)" font-size="16">v4probe</text>
+  <text x="298" y="472" fill="var(--muted)" font-size="14">the value through v4 alone?</text>
+  <path d="M600,466 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="622" y="472" fill="var(--ink-ours)" font-size="14">pass</text>
+
+  <!-- row 9 -->
+  <line x1="48" y1="513" x2="76" y2="513" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <rect x="76" y="498" width="210" height="30" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="88" y="518" fill="var(--ink-kern)" font-size="16">vadd16</text>
+  <text x="298" y="518" fill="var(--muted)" font-size="14">same bytes, 16 VGPRs?</text>
+  <path d="M600,512 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="622" y="518" fill="var(--ink-ours)" font-size="14">pass</text>
+
+  <!-- the answer -->
+  <rect x="48" y="552" width="430" height="44" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="64" y="579" fill="var(--fg)" font-size="16">Rule 3: ask for 8 spare VGPRs</text>
+
+  <!-- legend -->
+  <rect x="8" y="614" width="22" height="18" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="36" y="628" fill="var(--muted)" font-size="14">bisect kernel</text>
+  <path d="M180,626 l5,6 l10,-13" fill="none" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="202" y="628" fill="var(--muted)" font-size="14">the packet retired</text>
+  <line x1="340" y1="617" x2="353" y2="630" stroke="var(--ink-kern)" stroke-width="2"/>
+  <line x1="353" y1="617" x2="340" y2="630" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="362" y="628" fill="var(--muted)" font-size="14">the queue hung, one reset</text>
+</svg>
+<figcaption>Ten kernels, one question each, narrowed a vadd hang down to
+the VGPR count in the kernel descriptor.</figcaption>
+</figure>
+
+<p>vadd hung on its first run. The harness printed rptr 0, signal 1 and
+c[0] 0: the packet never retired and the kernel never reached its
+store. The log showed no fault. Every experiment cost one GPU reset, so
+a guess was expensive. Each kernel below answers exactly one question,
+and the order gets the most information per reset. All of them run with
+one wave, one element, and the harness unchanged.</p>
+
+<p>store42 at workgroup 256 ran eight waves of known-good code and
+passed, so eight waves are safe. vadd as one wave hung, and it hung
+again on fine-grained data, so the data type is clear. vload proved one
+vector load. sload proved the three scalar loads, including the 128-bit
+one. vbranch proved the exec-mask sequence and the branch. Each of
+those passed.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>kernel</th><th>what it isolates</th><th>result</th></tr></thead>
+  <tbody>
+    <tr><td>store42 (wg 256)</td><td>8 waves of a known-good kernel</td><td>pass</td></tr>
+    <tr><td>vadd (wg 1)</td><td>vadd code as one wave</td><td>hang</td></tr>
+    <tr><td>vadd (wg 1, fine data)</td><td>coarse vs fine data</td><td>hang</td></tr>
+    <tr><td>vload</td><td>one vector load, then store</td><td>pass</td></tr>
+    <tr><td>sload</td><td>vadd's 3 scalar loads incl. 128-bit</td><td>pass</td></tr>
+    <tr><td>sdump</td><td>dump s4..s7, s10, s2, v0 to memory</td><td>all correct</td></tr>
+    <tr><td>vbranch</td><td>vadd's exec-mask and branch, no loads</td><td>pass</td></tr>
+    <tr><td>vadd2</td><td>vadd using v0..v3 only</td><td>pass</td></tr>
+    <tr><td>v4probe</td><td>vload with the value through v4</td><td>pass</td></tr>
+    <tr><td>vadd16</td><td>vadd bytes, descriptor asks 16 VGPRs</td><td>pass</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>vadd2 is vadd with the second load in v0 instead of v4. Two dwords
+are the only difference between the two kernels. Their descriptors are
+identical, because 4 and 5 registers encode to the same block: the
+assembler counts VGPRs in blocks of 8 for wave32. vadd2 passed. vadd16
+then took vadd's exact bytes and moved the register field one block
+higher, and it runs. That pair is the proof.</p>
+
+<p>Rule 3 follows: ask the assembler for 8 more VGPRs than the code
+uses. Block 0 does not give a wave five usable registers, whatever the
+encoding says. The limit of the result is honest. v4probe passed alone,
+so one load into v4 does not hang a wave; the failure needs a second
+load in flight. The mechanism stays unknown and the rule is known.</p>
+
+<p>Method notes. sdump could not hang, so it ran first, and it showed
+that every register vadd depends on was correct: a, b, n, the workgroup
+id and the lane id. On timeout the harness prints rptr, signal and
+c[0], so even a hang reports whether the packet retired and whether the
+kernel stored. The bisect kernels stay committed under
+<code>src/kernels/</code> as the record. This page cost about eight
+resets.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/lessons.md</code></li>
+  <li><code>src/kernels/</code></li>
+  <li><code>tools/asm</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 5</span></p>
+</footer>
+
+</div>
+</body>
+</html>

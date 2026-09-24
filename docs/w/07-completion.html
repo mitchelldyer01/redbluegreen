@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Completion</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="06-dispatch.html">prev: Dispatch</a>
+    <a href="08-bandwidth.html">next: Bandwidth</a>
+  </nav>
+</header>
+
+<h1>Completion</h1>
+<p class="lede">How the command processor reports a finished dispatch,
+and the two faults that stopped it.</p>
+
+<figure>
+<svg viewBox="0 0 800 520" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="The command processor walks a chain after the waves end; a missing EOP buffer breaks the chain at REMOVE_QUEUE, and non-coherent buffers break it at the completion signal.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- step 1: the kernel finishes -->
+  <rect x="8" y="24" width="310" height="46" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="24" y="54" fill="var(--ink-kern)" font-size="16">waves end</text>
+  <line x1="163" y1="70" x2="163" y2="100" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="180" y="90" fill="var(--muted)" font-size="14">signals</text>
+
+  <!-- step 2: our EOP buffer -->
+  <rect x="8" y="100" width="310" height="46" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="24" y="130" fill="var(--fg)" font-size="16">end-of-pipe event, our buffer</text>
+  <line x1="163" y1="146" x2="163" y2="176" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="180" y="166" fill="var(--muted)" font-size="14">delivers</text>
+
+  <!-- step 3: the fence -->
+  <rect x="8" y="176" width="310" height="46" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="24" y="206" fill="var(--fg)" font-size="16">CP release fence</text>
+  <line x1="163" y1="222" x2="163" y2="252" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="180" y="242" fill="var(--muted)" font-size="14">writes</text>
+
+  <!-- step 4: the signal, and the memory-type break -->
+  <rect x="8" y="252" width="310" height="46" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="24" y="282" fill="var(--fg)" font-size="16">CP takes the signal 1 to 0</text>
+  <line x1="153" y1="227" x2="173" y2="247" stroke="var(--fg)" stroke-width="2"/>
+  <line x1="173" y1="227" x2="153" y2="247" stroke="var(--fg)" stroke-width="2"/>
+  <text x="350" y="250" fill="var(--muted)" font-size="14">break: non-COHERENT buffers.</text>
+  <text x="350" y="268" fill="var(--muted)" font-size="14">The CP never sees completion.</text>
+  <text x="350" y="286" fill="var(--muted)" font-size="14">The signal stays 1. Reset.</text>
+  <text x="350" y="308" fill="var(--ink-ours)" font-size="14">fix: COHERENT on the ring, both</text>
+  <text x="350" y="326" fill="var(--ink-ours)" font-size="14">pointers, the kernel object, the</text>
+  <text x="350" y="344" fill="var(--ink-ours)" font-size="14">kernarg and the signal.</text>
+  <text x="350" y="362" fill="var(--ink-kern)" font-size="14">Kernel data, the target, stays coarse.</text>
+
+  <line x1="163" y1="298" x2="163" y2="328" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="180" y="318" fill="var(--muted)" font-size="14">advances</text>
+
+  <!-- step 5: the read pointer -->
+  <rect x="8" y="328" width="310" height="46" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="24" y="358" fill="var(--fg)" font-size="16">read pointer advances</text>
+  <line x1="163" y1="374" x2="163" y2="404" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="180" y="394" fill="var(--muted)" font-size="14">later</text>
+
+  <!-- step 6: destroy, and the EOP break -->
+  <rect x="8" y="404" width="310" height="46" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="24" y="434" fill="var(--fg)" font-size="16">REMOVE_QUEUE at destroy</text>
+  <line x1="153" y1="379" x2="173" y2="399" stroke="var(--fg)" stroke-width="2"/>
+  <line x1="173" y1="379" x2="153" y2="399" stroke="var(--fg)" stroke-width="2"/>
+  <text x="350" y="404" fill="var(--muted)" font-size="14">break: no EOP buffer.</text>
+  <text x="350" y="422" fill="var(--muted)" font-size="14">REMOVE_QUEUE hangs MES. Reset.</text>
+  <text x="350" y="444" fill="var(--ink-ours)" font-size="14">fix: a 4 KiB coarse EXECUTABLE</text>
+  <text x="350" y="462" fill="var(--ink-ours)" font-size="14">EOP buffer, as libhsakmt makes.</text>
+
+  <!-- legend -->
+  <rect x="8" y="486" width="22" height="18" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="500" fill="var(--muted)" font-size="14">our code</text>
+  <rect x="150" y="486" width="22" height="18" rx="6" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="178" y="500" fill="var(--muted)" font-size="14">CP and driver</text>
+  <rect x="340" y="486" width="22" height="18" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="368" y="500" fill="var(--muted)" font-size="14">kernel</text>
+</svg>
+<figcaption>The command processor walks this chain after the waves
+end, and the two faults break it at the signal and at
+REMOVE_QUEUE.</figcaption>
+</figure>
+
+<p>Two faults stood between a kernel that ran and a command processor
+that said so. The kernel accepted both. The hardware refused both, and
+this hardware refuses by hanging, which costs a GPU reset.</p>
+
+<p>The first fault was the end-of-pipe buffer. The ioctl comment calls
+it optional, "not required for all ASICs". The gfx11 MQD code programs
+its address and its size into the hardware queue descriptor with no
+zero check. A queue built without one hangs MES on REMOVE_QUEUE at
+destroy time. That cost four resets, and each reset killed a local
+model server that shared the GPU. The fix is a 4 KiB coarse
+EXECUTABLE buffer, the same buffer libhsakmt allocates.</p>
+
+<p>The second fault was the memory type. The kernel ran and the target
+held 42, but the completion signal stayed 1 and the queue could not be
+removed. No page fault was logged. ROCr allocates every buffer the CP
+touches fine-grained, which is COHERENT, and ours had none, so the CP
+reads and atomics did not see the bytes the CPU wrote. The fix is
+COHERENT on the ring, both pointers, the kernel object, the kernarg
+and the signal. That cost five resets before the fix, and five clean
+runs came after it.</p>
+
+<p>One earlier fact fell with this fix. When the memory is coherent,
+the CP polls the write pointer, and a packet runs without a doorbell.
+The older note said that only the doorbell starts a packet. That note
+was an artifact of non-coherent memory.</p>
+
+<p>Each fix came out of reading the sources. kfd_mqd_manager_v11.c
+gave the EOP rule. ROCr amd_aql_queue.cpp and libhsakmt fmm.c gave
+COHERENT in the system allocator. The rule from here is to mirror what
+ROCr allocates, not what the ioctl permits. The other rule is that the
+first GPU run of a new kernel is one run, because five identical runs
+cost five resets and taught the same thing once.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/lessons.md</code></li>
+  <li><code>docs/dispatch.md</code></li>
+  <li><code>kfd_mqd_manager_v11.c</code></li>
+  <li>ROCr <code>amd_aql_queue.cpp</code></li>
+  <li>libhsakmt <code>fmm.c</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">units 3b, 4</span></p>
+</footer>
+
+</div>
+</body>
+</html>

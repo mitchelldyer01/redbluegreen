@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bandwidth</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="07-completion.html">prev: Completion</a>
+    <a href="09-bisect.html">next: The bisect</a>
+  </nav>
+</header>
+
+<h1>Bandwidth</h1>
+<p class="lede">What the memory system gives a streaming kernel, measured
+with the vector add.</p>
+
+<figure>
+<svg viewBox="0 0 800 392" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="Measured vector add bandwidth against element count. The large sizes reach 88 percent of the theoretical peak, and a one-element dispatch measures the launch floor instead of a bandwidth.">
+
+  <!-- legend -->
+  <line x1="110" y1="15" x2="140" y2="15" stroke="var(--ink-ours)" stroke-width="2"/>
+  <circle cx="125" cy="15" r="5" fill="var(--ink-ours)"/>
+  <text x="148" y="20" fill="var(--fg)" font-size="14">coarse data</text>
+  <path d="M245,7 L253,15 L245,23 L237,15 z" fill="var(--surface)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="262" y="20" fill="var(--fg)" font-size="14">fine data (COHERENT)</text>
+  <line x1="430" y1="15" x2="460" y2="15" stroke="var(--muted)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="468" y="20" fill="var(--muted)" font-size="14">theoretical peak</text>
+
+  <!-- axes -->
+  <line x1="90" y1="40" x2="90" y2="320" stroke="var(--muted)" stroke-width="1.5"/>
+  <line x1="90" y1="320" x2="770" y2="320" stroke="var(--muted)" stroke-width="1.5"/>
+  <text x="82" y="325" text-anchor="end" fill="var(--muted)" font-size="14">0</text>
+  <text x="82" y="255" text-anchor="end" fill="var(--muted)" font-size="14">64</text>
+  <text x="82" y="185" text-anchor="end" fill="var(--muted)" font-size="14">128</text>
+  <text x="82" y="115" text-anchor="end" fill="var(--muted)" font-size="14">192</text>
+  <text x="82" y="45" text-anchor="end" fill="var(--muted)" font-size="14">256</text>
+  <text x="26" y="180" transform="rotate(-90 26 180)" text-anchor="middle" fill="var(--muted)" font-size="14">GB/s</text>
+
+  <text x="110" y="344" text-anchor="middle" fill="var(--muted)" font-size="14">1</text>
+  <text x="270" y="344" text-anchor="middle" fill="var(--muted)" font-size="14">100</text>
+  <text x="430" y="344" text-anchor="middle" fill="var(--muted)" font-size="14">10 thousand</text>
+  <text x="590" y="344" text-anchor="middle" fill="var(--muted)" font-size="14">1 million</text>
+  <text x="750" y="344" text-anchor="middle" fill="var(--muted)" font-size="14">100 million</text>
+  <text x="430" y="372" text-anchor="middle" fill="var(--muted)" font-size="14">elements, log scale</text>
+
+  <!-- theoretical peak -->
+  <line x1="90" y1="40" x2="770" y2="40" stroke="var(--muted)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="188" y="34" fill="var(--muted)" font-size="14">theoretical 256 GB/s</text>
+
+  <!-- coarse series -->
+  <path d="M590,229 L688,82 L736,74" fill="none" stroke="var(--ink-ours)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <circle cx="590" cy="229" r="5" fill="var(--ink-ours)" stroke="var(--surface)" stroke-width="2"/>
+  <circle cx="688" cy="82" r="5" fill="var(--ink-ours)" stroke="var(--surface)" stroke-width="2"/>
+  <circle cx="736" cy="74" r="5" fill="var(--ink-ours)" stroke="var(--surface)" stroke-width="2"/>
+  <text x="590" y="214" text-anchor="middle" fill="var(--fg)" font-size="16">83</text>
+  <text x="752" y="62" text-anchor="end" fill="var(--fg)" font-size="16">225</text>
+  <line x1="682" y1="88" x2="648" y2="146" stroke="var(--muted)" stroke-width="1.5"/>
+  <text x="644" y="151" text-anchor="end" fill="var(--fg)" font-size="16">coarse 218</text>
+
+  <!-- fine point -->
+  <path d="M688,68 L697,77 L688,86 L679,77 z" fill="var(--surface)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <line x1="679" y1="72" x2="636" y2="56" stroke="var(--muted)" stroke-width="1.5"/>
+  <text x="630" y="61" text-anchor="end" fill="var(--fg)" font-size="16">fine 222</text>
+
+  <!-- launch floor point -->
+  <circle cx="110" cy="320" r="5" fill="var(--surface)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <line x1="116" y1="314" x2="140" y2="290" stroke="var(--muted)" stroke-width="1.5"/>
+  <text x="146" y="284" fill="var(--fg)" font-size="16">one element: no bandwidth</text>
+  <text x="146" y="304" fill="var(--muted)" font-size="14">133 us launch floor, about 30 MB at 225 GB/s</text>
+</svg>
+<figcaption>The vector add reaches 88 percent of the theoretical peak on the
+large sizes, and a one-element dispatch measures the launch floor instead of a
+bandwidth.</figcaption>
+</figure>
+
+<p>vadd is the simplest kernel that can fill the memory system: one
+work-item per element, two loads and one store, and no reuse of a
+loaded value. That makes it a probe of bandwidth rather than of
+arithmetic. The host times it from just before the doorbell write to
+the moment the completion signal reaches zero, so the number holds the
+launch as well as the kernel. Each size runs five reps with a fresh
+signal and reused buffers, and the best rep is kept.</p>
+
+<p>Bandwidth counts twelve bytes per element over that best time. The
+two large sizes settle at 88 percent of the theoretical peak, which is
+as near as a streaming kernel gets here. The smallest streaming size
+falls short because the launch is still a large share of its total.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>elements</th><th>best time</th><th>GB/s</th></tr></thead>
+  <tbody>
+  <tr><td>1</td><td>133 us</td><td>launch floor</td></tr>
+  <tr><td>1,048,576</td><td>151 us</td><td>83</td></tr>
+  <tr><td>16,777,216</td><td>924 us</td><td>218</td></tr>
+  <tr><td>16,777,216, fine</td><td>906 us</td><td>222</td></tr>
+  <tr><td>67,108,864</td><td>3,578 us</td><td>225</td></tr>
+  <tr><td>67,108,864, fine</td><td>hangs</td><td>open item</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>A dispatch of one element costs 133 us, and that is a floor under
+every dispatch rather than a property of memory. david has to amortize
+it. A training step must move enough bytes that the floor is small
+against the step, so the floor sets a lower bound on batch size.</p>
+
+<p>Fine grained data runs at the same speed as coarse data on this
+load, so the COHERENT flag costs nothing while streaming. The largest
+fine buffer hangs before its first store and logs no fault. That stays
+an open item, and the data stays coarse.</p>
+
+<p>Two of our own processes at once split the bandwidth between them
+instead of adding to it. With a local model server generating
+alongside, the reps ran at roughly half speed and every result still
+verified. The hardware runs the queues side by side and does not
+starve one for the other.</p>
+
+<p>The earlier guess at the peak is now a measurement. The other
+guess, a few TFLOP/s of arithmetic, waits for the first matmul in
+unit 6.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/lessons.md</code></li>
+  <li><code>src/kernels/vadd.s</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 5</span></p>
+</footer>
+
+</div>
+</body>
+</html>

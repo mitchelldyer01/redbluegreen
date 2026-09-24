@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The floor</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="01-box.html">prev: The box</a>
+    <a href="03-memory.html">next: Memory</a>
+  </nav>
+</header>
+
+<h1>The floor</h1>
+<p class="lede">What the kernel compute device asks of a program that
+has no GPU userspace under it.</p>
+
+<figure>
+<svg viewBox="0 0 800 630" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="Unit 1 holds two file descriptors: every ioctl goes to /dev/kfd, and the render node only gives the fd for ACQUIRE_VM and the host views of buffers.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- our program -->
+  <rect x="40" y="24" width="720" height="48" fill="var(--fill-ours)"
+    stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="56" y="54" fill="var(--fg)" font-size="16">our program, unit 1</text>
+
+  <!-- fd 1: the compute device -->
+  <rect x="40" y="92" width="350" height="170" fill="var(--fill-ours)"
+    stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="56" y="116" fill="var(--fg)" font-size="16">fd 1: /dev/kfd</text>
+  <text x="56" y="140" fill="var(--muted)" font-size="14">GET_VERSION 0x01</text>
+  <text x="56" y="160" fill="var(--muted)" font-size="14">RUNTIME_ENABLE 0x25</text>
+  <text x="56" y="180" fill="var(--muted)" font-size="14">ACQUIRE_VM 0x15</text>
+  <text x="56" y="200" fill="var(--muted)" font-size="14">ALLOC 0x16, MAP 0x18</text>
+  <text x="56" y="220" fill="var(--muted)" font-size="14">CREATE_QUEUE 0x02</text>
+  <text x="56" y="240" fill="var(--muted)" font-size="14">mmap: doorbells, event page</text>
+
+  <!-- fd 2: the render node -->
+  <rect x="410" y="92" width="350" height="170" fill="var(--fill-ours)"
+    stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="426" y="116" fill="var(--fg)" font-size="16">fd 2: /dev/dri/renderD128</text>
+  <text x="426" y="140" fill="var(--muted)" font-size="14">this fd goes to ACQUIRE_VM</text>
+  <text x="426" y="160" fill="var(--muted)" font-size="14">mmap: buffer host views</text>
+  <text x="426" y="180" fill="var(--muted)" font-size="14">no DRM ioctl after that</text>
+  <text x="426" y="200" fill="var(--muted)" font-size="14">the kfd fd answers ENODEV</text>
+  <text x="426" y="220" fill="var(--muted)" font-size="14">for a buffer host view</text>
+
+  <line x1="215" y1="262" x2="215" y2="298" stroke="var(--ink-arrow)"
+    stroke-width="2" marker-end="url(#arw)"/>
+  <text x="225" y="286" fill="var(--muted)" font-size="14">calls</text>
+  <line x1="585" y1="262" x2="585" y2="298" stroke="var(--ink-arrow)"
+    stroke-width="2" marker-end="url(#arw)"/>
+  <text x="595" y="286" fill="var(--muted)" font-size="14">maps</text>
+
+  <!-- the driver -->
+  <rect x="40" y="300" width="720" height="48" rx="10" fill="var(--fill-hw)"
+    stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="56" y="330" fill="var(--fg)" font-size="16">kernel: the amdgpu and kfd driver</text>
+
+  <line x1="400" y1="348" x2="400" y2="390" stroke="var(--ink-arrow)"
+    stroke-width="2" marker-end="url(#arw)"/>
+  <text x="412" y="374" fill="var(--muted)" font-size="14">programs</text>
+
+  <!-- the hardware -->
+  <rect x="40" y="392" width="720" height="48" rx="10" fill="var(--fill-hw)"
+    stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="56" y="422" fill="var(--fg)" font-size="16">GPU, AMD Strix Halo APU</text>
+
+  <!-- the request number, as a field strip -->
+  <text x="40" y="482" fill="var(--muted)" font-size="14">the ioctl request number, 32 bits:</text>
+
+  <text x="120" y="498" fill="var(--muted)" font-size="14">31</text>
+  <text x="155" y="498" fill="var(--muted)" font-size="14">29</text>
+  <text x="400" y="498" fill="var(--muted)" font-size="14">15</text>
+  <text x="540" y="498" fill="var(--muted)" font-size="14">7</text>
+
+  <rect x="120" y="506" width="35" height="34" fill="var(--fill-ours)"
+    stroke="var(--ink-ours)" stroke-width="2"/>
+  <rect x="155" y="506" width="245" height="34" fill="var(--fill-ours)"
+    stroke="var(--ink-ours)" stroke-width="2"/>
+  <rect x="400" y="506" width="140" height="34" fill="var(--fill-ours)"
+    stroke="var(--ink-ours)" stroke-width="2"/>
+  <rect x="540" y="506" width="140" height="34" fill="var(--fill-ours)"
+    stroke="var(--ink-ours)" stroke-width="2"/>
+
+  <text x="137" y="529" text-anchor="middle" fill="var(--fg)" font-size="16">dir</text>
+  <text x="277" y="529" text-anchor="middle" fill="var(--fg)" font-size="16">size of the struct</text>
+  <text x="470" y="529" text-anchor="middle" fill="var(--fg)" font-size="16">'K'</text>
+  <text x="610" y="529" text-anchor="middle" fill="var(--fg)" font-size="16">nr</text>
+
+  <text x="120" y="558" fill="var(--muted)" font-size="14">2 bits</text>
+  <text x="155" y="558" fill="var(--muted)" font-size="14">14 bits</text>
+  <text x="400" y="558" fill="var(--muted)" font-size="14">8 bits</text>
+  <text x="540" y="558" fill="var(--muted)" font-size="14">8 bits</text>
+
+  <text x="40" y="582" fill="var(--muted)" font-size="14">a wrong struct size gives a wrong request number, and the kernel answers EINVAL</text>
+
+  <!-- legend -->
+  <rect x="40" y="598" width="22" height="18" fill="var(--fill-ours)"
+    stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="70" y="612" fill="var(--muted)" font-size="14">our code</text>
+  <rect x="180" y="598" width="22" height="18" rx="6" fill="var(--fill-hw)"
+    stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="210" y="612" fill="var(--muted)" font-size="14">driver and hardware</text>
+</svg>
+<figcaption>Unit 1 holds two file descriptors: every ioctl goes to
+/dev/kfd, and the render node only gives the fd for ACQUIRE_VM and the
+host views of buffers.</figcaption>
+</figure>
+
+<p>The "floor" is the lowest level interface for accessing compute.
+On this machine, it is the kernel character device <abbr title="the
+compute driver's character device: every ioctl in the project goes
+to it">/dev/kfd</abbr>.</p>
+
+<p>A userspace runtime sits above /dev/kfd, hiding it.</p>
+
+<p><code>redbluegreen</code> starts below that runtime in order to
+optimize model training for the constraints of this box.</p>
+
+<p>This unit does four things in order:</p>
+
+<ol>
+  <li>It reads <abbr title="the driver's number for one GPU node,
+  read from sysfs at run time; it changes across boots">gpu_id</abbr>
+  from the sysfs topology. It skips each node with gpu_id 0.</li>
+  <li>It opens both device nodes.</li>
+  <li>It calls <abbr title="the kfd ioctl that returns the driver
+  interface version">GET_VERSION</abbr>.</li>
+  <li>It calls <abbr title="the kfd ioctl that binds a GPU address
+  space to this process">ACQUIRE_VM</abbr> with the render <abbr
+  title="file descriptor: the number a process uses to name an open
+  file or device">fd</abbr> and the gpu_id.</li>
+</ol>
+
+<p>The compute device takes every <abbr title="a system call that
+sends one request to a device driver">ioctl</abbr> and serves the
+<abbr title="mapped registers: a process writes one to tell the GPU
+that a queue has new work">doorbells</abbr> and <abbr title="a
+shared page where the GPU raises completion events and the process
+waits on them">event page</abbr>.</p>
+
+<p>The render node gives the fd ACQUIRE_VM needs and carries the host
+view of each buffer.</p>
+
+<p><abbr title="the kfd ioctl that tells the driver a runtime now
+owns this process">RUNTIME_ENABLE</abbr> is called once per process,
+before any queue. The kernel comment says that <abbr title="micro
+engine scheduler: the GPU firmware that owns the hardware
+queues">MES</abbr> uses this call to clear a stale process
+context.</p>
+
+<p>Even though <code>redbluegreen</code> is trying to minimize
+dependencies, it cannot avoid three:</p>
+
+<ol>
+  <li>The driver header defines every struct.</li>
+  <li>An assembler builds <abbr title="the target name of this GPU:
+  RDNA 3.5, Strix Halo">gfx1151</abbr> machine code.</li>
+  <li><abbr title="the C library">libc</abbr> supplies ioctl and
+  <abbr title="the system call that maps a file or device into the
+  address space of a process">mmap</abbr>.</li>
+</ol>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/floor.md</code></li>
+  <li><code>docs/queue.md</code></li>
+  <li><code>kfd_ioctl.h</code>, the driver uapi header</li>
+  <li><code>libhsakmt</code>, the vendor thunk source</li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 1</span></p>
+</footer>
+
+</div>
+</body>
+</html>

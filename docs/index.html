@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>redbluegreen wiki</title>
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="index.html">redbluegreen wiki</a>
+  <nav class="pager"><span>the notebook, page by page</span></nav>
+</header>
+
+<h1>redbluegreen wiki</h1>
+<p class="lede">A GPU training toolchain for one machine, written down
+so the reasoning survives.</p>
+
+<blockquote>
+<p>"I want to train and work with models more closely, but my hardware
+has some serious limitations. Support is full of gaps and it is not
+obvious how the off-the-shelf software is meant to work; I am
+constantly pinning versions and community forks."</p>
+<cite>the owner</cite>
+</blockquote>
+
+<p>redbluegreen is a GPU training toolchain for one machine, an AMD
+Strix Halo APU. The toolchain is built from the kernel interface up,
+with no GPU userspace under it. The consumer is david: two small
+diffusion models, a graph coupling model over discrete edges and a
+code span model. Both must train in one night on this box. This site
+exists so the owner can re-derive the reasoning behind each decision a
+year on. The voice is a dry lab notebook.</p>
+
+<figure>
+<svg viewBox="0 0 800 476" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="The seven layers of redbluegreen. Layers 1 and 2 and the first two kernels exist. Layers 3 to 7 do not exist yet.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- dependency arrow: each layer uses only the layer below -->
+  <line x1="118" y1="30" x2="118" y2="322" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="102" y="176" transform="rotate(-90 102 176)" text-anchor="middle" fill="var(--ink-arrow)" font-size="14">uses</text>
+
+  <!-- layer 7: not yet -->
+  <rect x="150" y="24" width="420" height="40" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="166" y="50" fill="var(--ink-none)" font-size="16">7. data resident in GPU memory</text>
+  <text x="586" y="49" fill="var(--ink-none)" font-size="14">not yet</text>
+
+  <!-- layer 6: not yet -->
+  <rect x="150" y="68" width="420" height="40" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="166" y="94" fill="var(--ink-none)" font-size="16">6. loop</text>
+  <text x="586" y="93" fill="var(--ink-none)" font-size="14">not yet</text>
+
+  <!-- layer 5: not yet -->
+  <rect x="150" y="112" width="420" height="40" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="166" y="138" fill="var(--ink-none)" font-size="16">5. optimizer</text>
+  <text x="586" y="137" fill="var(--ink-none)" font-size="14">not yet</text>
+
+  <!-- layer 4: not yet -->
+  <rect x="150" y="156" width="420" height="40" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="166" y="182" fill="var(--ink-none)" font-size="16">4. autograd</text>
+  <text x="586" y="181" fill="var(--ink-none)" font-size="14">not yet</text>
+
+  <!-- layer 3: the layer is open, two kernels inside it exist -->
+  <rect x="150" y="200" width="420" height="40" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="166" y="226" fill="var(--ink-none)" font-size="16">3. kernels</text>
+  <rect x="380" y="207" width="86" height="26" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="423" y="225" text-anchor="middle" fill="var(--ink-kern)" font-size="14">store42</text>
+  <rect x="476" y="207" width="86" height="26" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="519" y="225" text-anchor="middle" fill="var(--ink-kern)" font-size="14">vadd</text>
+  <text x="586" y="225" fill="var(--ink-kern)" font-size="14">two kernels</text>
+
+  <!-- layer 2: built -->
+  <rect x="150" y="244" width="420" height="40" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="166" y="270" fill="var(--fg)" font-size="16">2. memory</text>
+  <text x="586" y="269" fill="var(--ink-ours)" font-size="14">unit 2</text>
+
+  <!-- layer 1: built -->
+  <rect x="150" y="288" width="420" height="40" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="166" y="314" fill="var(--fg)" font-size="16">1. kfd and queue</text>
+  <text x="586" y="313" fill="var(--ink-ours)" font-size="14">units 1, 3, 5b</text>
+
+  <!-- the boundary the project starts at -->
+  <text x="150" y="346" fill="var(--muted)" font-size="14">no GPU userspace between</text>
+  <line x1="118" y1="352" x2="780" y2="352" stroke="var(--muted)" stroke-width="2" stroke-dasharray="4 6"/>
+  <rect x="150" y="368" width="420" height="40" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="166" y="394" fill="var(--fg)" font-size="16">kfd driver, AMD Strix Halo APU</text>
+  <text x="586" y="393" fill="var(--ink-hw)" font-size="14">driver, hardware</text>
+
+  <!-- legend -->
+  <rect x="8" y="436" width="22" height="18" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="450" fill="var(--muted)" font-size="14">built</text>
+  <rect x="120" y="436" width="22" height="18" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="148" y="450" fill="var(--muted)" font-size="14">not yet</text>
+  <rect x="260" y="436" width="22" height="18" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="288" y="450" fill="var(--muted)" font-size="14">kernel, GPU ISA</text>
+  <rect x="460" y="436" width="22" height="18" rx="6" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="488" y="450" fill="var(--muted)" font-size="14">driver and hardware</text>
+</svg>
+<figcaption>The seven layers in dependency order. Units 1 to 5b built
+layers 1 and 2 and the first two kernels; layers 3 to 7 do not exist
+yet.</figcaption>
+</figure>
+
+<p>The layers are kfd and queue; memory; kernels; autograd; optimizer;
+loop; and data resident in GPU memory. Each layer uses only the layer
+below it. Unit 1 talks to the driver with GET_VERSION and ACQUIRE_VM.
+Unit 2 owns memory with ALLOC, MAP and a host view. Unit 3 owns the
+queue: Drop types, an AQL queue and an event. Unit 4 dispatches
+one kernel that writes 42. Unit 5 adds two vectors at
+225 GB/s. Unit 5b survives a pause; the root cause was page tables in
+a full carve-out. Nothing above layer 3 exists yet. The toolchain has
+zero external dependencies at run time. The build needs llvm-mc and
+llvm-objcopy to assemble kernels, and rustc. There are no crates.</p>
+
+<p>The price so far is 31 GPU resets on 2026-09-22. Each reset is now
+a rule that is written down, and the owner calls the list "thirty one
+ways not to make a lightbulb". A 27B local model (Qwen) in a coding
+agent wrote the implementation from one-page prompts; the owner ran
+the GPU steps. The pages below take one mechanism each.</p>
+
+<h2>Contents</h2>
+<ol class="toc">
+  <li><span class="n">01</span><a href="w/01-box.html">The box</a></li>
+  <li><span class="n">02</span><a href="w/02-floor.html">The floor</a></li>
+  <li><span class="n">03</span><a href="w/03-memory.html">Memory</a></li>
+  <li><span class="n">04</span><a href="w/04-queue.html">The queue</a></li>
+  <li><span class="n">05</span><a href="w/05-ownership.html">Ownership</a></li>
+  <li><span class="n">06</span><a href="w/06-dispatch.html">Dispatch</a></li>
+  <li><span class="n">07</span><a href="w/07-completion.html">Completion</a></li>
+  <li><span class="n">08</span><a href="w/08-bandwidth.html">Bandwidth</a></li>
+  <li><span class="n">09</span><a href="w/09-bisect.html">The bisect</a></li>
+  <li><span class="n">10</span><a href="w/10-reset.html">The reset chain</a></li>
+  <li><span class="n">11</span><a href="w/11-method.html">Method</a></li>
+</ol>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">units 1 to 5b</span>
+<span class="badge none">layers 3 to 7 open</span></p>
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="02-floor.html">prev: The floor</a>
+    <a href="04-queue.html">next: The queue</a>
+  </nav>
+</header>
+
+<h1>Memory</h1>
+<p class="lede">How one Buffer gets one virtual address that the CPU
+and the GPU both use.</p>
+
+<figure>
+<svg viewBox="0 0 800 296" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="One Buffer takes four steps over one virtual address range, and a Drop runs the same three driver steps backwards.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- the one address range every step works on -->
+  <text x="396" y="26" text-anchor="middle" fill="var(--muted)" font-size="14">one virtual address range: va to va + size</text>
+  <line x1="5" y1="44" x2="792" y2="44" stroke="var(--muted)" stroke-width="1.5"/>
+  <line x1="5" y1="36" x2="5" y2="52" stroke="var(--muted)" stroke-width="1.5"/>
+  <line x1="792" y1="36" x2="792" y2="52" stroke="var(--muted)" stroke-width="1.5"/>
+
+  <!-- step 1: our code -->
+  <rect x="5" y="74" width="150" height="88" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="80" y="102" text-anchor="middle" fill="var(--fg)" font-size="16">1 reserve va</text>
+  <text x="80" y="124" text-anchor="middle" fill="var(--muted)" font-size="14">mmap PROT_NONE</text>
+  <text x="80" y="144" text-anchor="middle" fill="var(--muted)" font-size="14">MAP_ANONYMOUS</text>
+
+  <line x1="161" y1="118" x2="212" y2="118" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="186" y="100" text-anchor="middle" fill="var(--muted)" font-size="14">passes</text>
+  <text x="186" y="114" text-anchor="middle" fill="var(--muted)" font-size="14">va</text>
+
+  <!-- step 2: kfd driver -->
+  <rect x="218" y="74" width="150" height="88" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="293" y="102" text-anchor="middle" fill="var(--fg)" font-size="16">2 ALLOC</text>
+  <text x="293" y="124" text-anchor="middle" fill="var(--muted)" font-size="14">nr 0x16, 40 B</text>
+  <text x="293" y="144" text-anchor="middle" fill="var(--muted)" font-size="14">va_addr = va</text>
+
+  <line x1="374" y1="118" x2="425" y2="118" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="399" y="100" text-anchor="middle" fill="var(--muted)" font-size="14">returns</text>
+  <text x="399" y="114" text-anchor="middle" fill="var(--muted)" font-size="14">handle</text>
+
+  <!-- step 3: kfd driver -->
+  <rect x="431" y="74" width="150" height="88" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="506" y="102" text-anchor="middle" fill="var(--fg)" font-size="16">3 MAP to GPU</text>
+  <text x="506" y="124" text-anchor="middle" fill="var(--muted)" font-size="14">nr 0x18</text>
+  <text x="506" y="144" text-anchor="middle" fill="var(--muted)" font-size="14">gpu_ids array</text>
+
+  <line x1="587" y1="118" x2="638" y2="118" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="612" y="100" text-anchor="middle" fill="var(--muted)" font-size="14">returns</text>
+  <text x="612" y="114" text-anchor="middle" fill="var(--muted)" font-size="14">offset</text>
+
+  <!-- step 4: our code -->
+  <rect x="644" y="74" width="150" height="88" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="719" y="102" text-anchor="middle" fill="var(--fg)" font-size="16">4 host view</text>
+  <text x="719" y="124" text-anchor="middle" fill="var(--muted)" font-size="14">mmap MAP_FIXED</text>
+  <text x="719" y="144" text-anchor="middle" fill="var(--muted)" font-size="14">render fd, offset</text>
+
+  <text x="396" y="182" text-anchor="middle" fill="var(--muted)" font-size="14">after step 4 the CPU and the GPU use the same address</text>
+
+  <!-- teardown, the reverse order -->
+  <text x="5" y="228" fill="var(--muted)" font-size="14">Drop, in reverse</text>
+
+  <rect x="218" y="200" width="150" height="44" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="293" y="229" text-anchor="middle" fill="var(--fg)" font-size="16">FREE</text>
+
+  <rect x="431" y="200" width="150" height="44" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="506" y="229" text-anchor="middle" fill="var(--fg)" font-size="16">UNMAP</text>
+
+  <rect x="644" y="200" width="150" height="44" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="719" y="229" text-anchor="middle" fill="var(--fg)" font-size="16">munmap</text>
+
+  <line x1="638" y1="222" x2="587" y2="222" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="612" y="214" text-anchor="middle" fill="var(--muted)" font-size="14">unmaps</text>
+
+  <line x1="425" y1="222" x2="374" y2="222" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="399" y="214" text-anchor="middle" fill="var(--muted)" font-size="14">frees</text>
+
+  <!-- legend -->
+  <rect x="5" y="262" width="22" height="18" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="33" y="276" fill="var(--muted)" font-size="14">our code</text>
+  <rect x="170" y="262" width="22" height="18" rx="6" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="198" y="276" fill="var(--muted)" font-size="14">kfd driver</text>
+</svg>
+<figcaption>One Buffer takes four steps over one virtual address
+range, and a Drop runs the same three driver steps backwards.</figcaption>
+</figure>
+
+<p>Our <abbr title="the project's Buffer type: one GPU allocation
+with a host view at the same virtual address">buffer</abbr> carries
+one address for both consumers so every pointer or kernel argument
+needs no translation step.</p>
+
+<p>One buffer takes four steps:</p>
+
+<ol>
+  <li>Get an address: reserve the range with an anonymous <abbr
+  title="an mmap protection flag: no access, so the call claims the
+  address range and no memory">PROT_NONE</abbr> <abbr title="the
+  system call that maps a file or device into the address space of a
+  process">mmap</abbr>.</li>
+  <li>Allocate memory: <abbr title="ALLOC_MEMORY_OF_GPU, the kfd
+  ioctl that makes one GPU allocation">ALLOC</abbr> (<abbr title="the
+  ioctl number: the low byte of the request code">nr 0x16</abbr>, a
+  40 byte argument) takes that address and returns a <abbr
+  title="the driver's token for one allocation">handle</abbr> and
+  <abbr title="the offset to pass to mmap on the render fd to get the
+  host view">mmap_offset</abbr>.</li>
+  <li>Map it to the GPU: <abbr title="MAP_MEMORY_TO_GPU, the kfd
+  ioctl that maps one allocation on a set of GPUs">MAP</abbr> (nr
+  0x18) takes the handle and an array of <abbr title="the driver's
+  number for each GPU node the allocation is mapped on">gpu_ids</abbr>.
+  </li>
+  <li>The host view is an mmap with <abbr title="an mmap flag:
+  writes go to the shared object, not to a private copy">MAP_SHARED
+  </abbr> and <abbr title="an mmap flag: place the mapping at the
+  given address and replace what is there">MAP_FIXED</abbr> on the
+  <abbr title="the file descriptor of /dev/dri/renderD128">render
+  fd</abbr> at mmap_offset.</li>
+</ol>
+
+<p>A Drop runs the reverse: <abbr title="the system call that removes
+a mapping from the address space">munmap</abbr>, <abbr
+title="UNMAP_MEMORY_FROM_GPU, the kfd ioctl that undoes
+MAP">UNMAP</abbr>, <abbr title="FREE_MEMORY_OF_GPU, the kfd ioctl
+that releases the allocation">FREE</abbr>.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Flag</th><th>Bit</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>GTT</td><td>1&lt;&lt;1</td><td>place it in the GTT pool</td></tr>
+    <tr><td>WRITABLE</td><td>1&lt;&lt;31</td>
+    <td>the GPU may store to it</td></tr>
+    <tr><td>EXECUTABLE</td><td>1&lt;&lt;30</td>
+    <td>it may hold kernel code</td></tr>
+    <tr><td>COHERENT</td><td>1&lt;&lt;26</td>
+    <td>fine grained, the CP sees CPU writes</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Every buffer the command processor touches carries <abbr
+title="the ALLOC flag, bit 26: fine grained, so the command
+processor sees each CPU write">COHERENT</abbr>: the ring, the two
+pointers, the kernel object, the <abbr title="kernel arguments: the
+buffer that holds the arguments a kernel reads at start">kernarg
+</abbr> buffer, and the signal.</p>
+
+<p>Data that only the kernels read and write stays coarse. Streaming
+loads measure 222 GB/s fine and 225 GB/s coarse.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/floor.md</code></li>
+  <li><code>docs/dispatch.md</code></li>
+  <li><code>docs/lessons.md</code></li>
+  <li><code>libhsakmt fmm.c</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 2</span></p>
+</footer>
+
+</div>
+</body>
+</html>

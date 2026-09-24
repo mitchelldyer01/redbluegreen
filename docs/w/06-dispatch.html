@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dispatch</title>
+<link rel="stylesheet" href="../site.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="site-head">
+  <a class="home" href="../index.html">redbluegreen wiki</a>
+  <nav class="pager">
+    <a href="05-ownership.html">prev: Ownership</a>
+    <a href="07-completion.html">next: Completion</a>
+  </nav>
+</header>
+
+<h1>Dispatch</h1>
+<p class="lede">The bytes and the order of writes that make the
+hardware run one kernel.</p>
+
+<figure>
+<svg viewBox="0 0 800 740" role="img" xmlns="http://www.w3.org/2000/svg"
+  aria-label="One dispatch is four objects and an order of writes: the packet body first, then the header, then the write pointer, then the doorbell, which is the one write that starts the hardware.">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-arrow)"/>
+    </marker>
+  </defs>
+
+  <!-- ===== part 1: the packet ===== -->
+  <text x="8" y="20" fill="var(--muted)" font-size="14">1. the AQL kernel dispatch packet, 64 bytes, we build it</text>
+
+  <text x="60" y="44" fill="var(--muted)" font-size="14">header = 0x1502</text>
+  <line x1="82" y1="50" x2="82" y2="66" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <text x="200" y="44" fill="var(--muted)" font-size="14">setup = 1</text>
+  <polyline points="205,50 205,58 128,58 128,66" fill="none" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+
+  <!-- row A offsets -->
+  <text x="60" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x00</text>
+  <text x="105" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x02</text>
+  <text x="150" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x04</text>
+  <text x="195" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x06</text>
+  <text x="240" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x08</text>
+  <text x="285" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x0a</text>
+  <text x="330" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x0c</text>
+  <text x="420" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x10</text>
+  <text x="510" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x14</text>
+  <text x="600" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x18</text>
+  <text x="690" y="62" text-anchor="middle" fill="var(--muted)" font-size="14">0x1c</text>
+
+  <!-- row A boxes -->
+  <rect x="60" y="70" width="45" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="82" y="120" text-anchor="middle" fill="var(--fg)" font-size="14" transform="rotate(-90 82 120)">header</text>
+  <rect x="105" y="70" width="45" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="127" y="120" text-anchor="middle" fill="var(--fg)" font-size="14" transform="rotate(-90 127 120)">setup</text>
+  <rect x="150" y="70" width="45" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="172" y="120" text-anchor="middle" fill="var(--fg)" font-size="14" transform="rotate(-90 172 120)">workgroup x</text>
+  <rect x="195" y="70" width="45" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="217" y="120" text-anchor="middle" fill="var(--fg)" font-size="14" transform="rotate(-90 217 120)">workgroup y</text>
+  <rect x="240" y="70" width="45" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="262" y="120" text-anchor="middle" fill="var(--fg)" font-size="14" transform="rotate(-90 262 120)">workgroup z</text>
+  <rect x="285" y="70" width="45" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="307" y="120" text-anchor="middle" fill="var(--fg)" font-size="14" transform="rotate(-90 307 120)">reserved</text>
+  <rect x="330" y="70" width="90" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="375" y="125" text-anchor="middle" fill="var(--fg)" font-size="14">grid x</text>
+  <rect x="420" y="70" width="90" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="465" y="125" text-anchor="middle" fill="var(--fg)" font-size="14">grid y</text>
+  <rect x="510" y="70" width="90" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="555" y="125" text-anchor="middle" fill="var(--fg)" font-size="14">grid z</text>
+  <rect x="600" y="70" width="90" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="645" y="125" text-anchor="middle" fill="var(--fg)" font-size="14">private</text>
+  <rect x="690" y="70" width="90" height="100" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="735" y="125" text-anchor="middle" fill="var(--fg)" font-size="14">group</text>
+
+  <!-- row A sizes -->
+  <text x="60" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">2</text>
+  <text x="105" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">2</text>
+  <text x="150" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">2</text>
+  <text x="195" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">2</text>
+  <text x="240" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">2</text>
+  <text x="285" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">2</text>
+  <text x="330" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">4</text>
+  <text x="420" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">4</text>
+  <text x="510" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">4</text>
+  <text x="600" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">4</text>
+  <text x="690" y="188" text-anchor="middle" fill="var(--muted)" font-size="14">4</text>
+
+  <!-- row B offsets -->
+  <text x="60" y="232" text-anchor="middle" fill="var(--muted)" font-size="14">0x20</text>
+  <text x="240" y="232" text-anchor="middle" fill="var(--muted)" font-size="14">0x28</text>
+  <text x="420" y="232" text-anchor="middle" fill="var(--muted)" font-size="14">0x30</text>
+  <text x="600" y="232" text-anchor="middle" fill="var(--muted)" font-size="14">0x38</text>
+
+  <!-- row B boxes -->
+  <rect x="60" y="240" width="180" height="50" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="150" y="271" text-anchor="middle" fill="var(--fg)" font-size="16">kernel_object</text>
+  <rect x="240" y="240" width="180" height="50" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="330" y="271" text-anchor="middle" fill="var(--fg)" font-size="16">kernarg_address</text>
+  <rect x="420" y="240" width="180" height="50" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="510" y="271" text-anchor="middle" fill="var(--fg)" font-size="16">reserved</text>
+  <rect x="600" y="240" width="180" height="50" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="690" y="271" text-anchor="middle" fill="var(--fg)" font-size="16">completion_signal</text>
+
+  <!-- row B sizes -->
+  <text x="60" y="308" text-anchor="middle" fill="var(--muted)" font-size="14">8</text>
+  <text x="240" y="308" text-anchor="middle" fill="var(--muted)" font-size="14">8</text>
+  <text x="420" y="308" text-anchor="middle" fill="var(--muted)" font-size="14">8</text>
+  <text x="600" y="308" text-anchor="middle" fill="var(--muted)" font-size="14">8</text>
+
+  <!-- ===== part 2: the order of writes ===== -->
+  <text x="8" y="350" fill="var(--muted)" font-size="14">2. the order of writes</text>
+
+  <rect x="60" y="370" width="155" height="60" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="74" y="396" fill="var(--fg)" font-size="16">1. body</text>
+  <text x="74" y="418" fill="var(--muted)" font-size="14">every field above</text>
+
+  <line x1="217" y1="400" x2="246" y2="400" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="231" y="390" text-anchor="middle" fill="var(--muted)" font-size="14">then</text>
+
+  <rect x="248" y="370" width="155" height="60" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="262" y="396" fill="var(--fg)" font-size="16">2. header last</text>
+  <text x="262" y="418" fill="var(--muted)" font-size="14">after a release fence</text>
+
+  <line x1="405" y1="400" x2="435" y2="400" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="420" y="390" text-anchor="middle" fill="var(--muted)" font-size="14">then</text>
+
+  <rect x="437" y="370" width="155" height="60" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="451" y="396" fill="var(--fg)" font-size="16">3. write pointer</text>
+  <text x="451" y="418" fill="var(--muted)" font-size="14">= index + 1</text>
+
+  <line x1="594" y1="400" x2="623" y2="400" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="608" y="390" text-anchor="middle" fill="var(--muted)" font-size="14">then</text>
+
+  <rect x="625" y="370" width="155" height="60" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="639" y="396" fill="var(--fg)" font-size="16">4. doorbell</text>
+  <text x="639" y="418" fill="var(--muted)" font-size="14">= index</text>
+
+  <line x1="514" y1="432" x2="514" y2="476" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="522" y="458" fill="var(--muted)" font-size="14">polls</text>
+  <line x1="702" y1="432" x2="702" y2="476" stroke="var(--ink-arrow)" stroke-width="2" marker-end="url(#arw)"/>
+  <text x="710" y="458" fill="var(--muted)" font-size="14">starts</text>
+
+  <rect x="430" y="480" width="350" height="56" rx="10" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="605" y="504" text-anchor="middle" fill="var(--fg)" font-size="16">command processor</text>
+  <text x="605" y="524" text-anchor="middle" fill="var(--muted)" font-size="14">consumes the packet and retires it</text>
+
+  <!-- ===== part 3: the kernel object, inset ===== -->
+  <text x="8" y="572" fill="var(--muted)" font-size="14">3. inset: the kernel object, bytes the assembler made</text>
+
+  <text x="60" y="594" text-anchor="middle" fill="var(--muted)" font-size="14">0x00</text>
+  <text x="100" y="594" text-anchor="middle" fill="var(--muted)" font-size="14">0x10</text>
+  <text x="224" y="594" text-anchor="middle" fill="var(--muted)" font-size="14">0x40</text>
+  <text x="330" y="594" text-anchor="middle" fill="var(--muted)" font-size="14">0x100</text>
+
+  <rect x="60" y="602" width="160" height="50" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="150" y="633" text-anchor="middle" fill="var(--ink-kern)" font-size="14">descriptor</text>
+  <line x1="100" y1="602" x2="100" y2="652" stroke="var(--ink-kern)" stroke-width="1.5"/>
+
+  <rect x="228" y="602" width="90" height="50" fill="var(--fill-none)" stroke="var(--ink-none)" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="273" y="633" text-anchor="middle" fill="var(--ink-none)" font-size="14">padding</text>
+
+  <rect x="326" y="602" width="260" height="50" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="456" y="633" text-anchor="middle" fill="var(--ink-kern)" font-size="14">store42 code</text>
+
+  <text x="60" y="672" text-anchor="middle" fill="var(--muted)" font-size="14">64</text>
+  <text x="326" y="672" text-anchor="middle" fill="var(--muted)" font-size="14">36</text>
+  <text x="780" y="672" text-anchor="end" fill="var(--muted)" font-size="14">scale breaks between 0x40 and 0x100</text>
+
+  <line x1="100" y1="654" x2="100" y2="680" stroke="var(--ink-arrow)" stroke-width="1.5"/>
+  <text x="108" y="694" fill="var(--muted)" font-size="14">the one field rbg patches: entry offset at byte 16 = 256</text>
+
+  <!-- legend -->
+  <rect x="8" y="708" width="22" height="18" fill="var(--fill-ours)" stroke="var(--ink-ours)" stroke-width="2"/>
+  <text x="36" y="722" fill="var(--muted)" font-size="14">we write</text>
+  <rect x="140" y="708" width="22" height="18" fill="var(--fill-kern)" stroke="var(--ink-kern)" stroke-width="2"/>
+  <text x="168" y="722" fill="var(--muted)" font-size="14">kernel bytes</text>
+  <rect x="300" y="708" width="22" height="18" rx="6" fill="var(--fill-hw)" stroke="var(--ink-hw)" stroke-width="2"/>
+  <text x="328" y="722" fill="var(--muted)" font-size="14">hardware</text>
+</svg>
+<figcaption>One dispatch is four objects and an order of writes, and
+the doorbell is the last write and the only one that starts the
+hardware.</figcaption>
+</figure>
+
+<p>A dispatch is four objects. The kernel object holds the descriptor
+and the code. The kernarg buffer holds the address the kernel writes
+to. The signal counts the packet down. The packet points at the other
+three. The descriptor is the dangerous one, because its fields tell
+the hardware how many registers each wave gets and how the wave
+starts. A wrong bit there resets the GPU.
+So the assembler builds the descriptor from the directives in the
+source, and rbg patches exactly one field, the entry offset that the
+assembler leaves as a relocation. Nothing else in those bytes is
+hand made.</p>
+
+<p>The packet is built in one order, and the order is the mechanism.
+The body goes down first. The header goes down last, as a single
+store after a release fence, so the command processor can never read
+a half built packet behind a valid header. The write pointer then
+moves on by one. The doorbell takes the packet index, not the next
+index and not the ring slot. Coherent memory lets the command
+processor find the packet from the write pointer alone, so a packet
+can run with no doorbell at all. Ring it anyway. The doorbell write
+is the one place in the program that starts hardware, and the code
+says so in a comment.</p>
+
+<p>The first kernel is store42. It loads the target address from the
+kernarg pointer, stores 42, waits for the store, and ends. Nine
+instructions and 36 bytes. The tool <code>tools/asm</code> runs
+llvm-mc and llvm-objcopy to pull out the text and the descriptor, and
+both are committed, so a clone without LLVM still builds. On the
+first run the target became 42. The signal did not reach zero. The
+kernel ran and the completion path did not, and the next page takes
+that apart.</p>
+
+<h2>Sources</h2>
+<ul class="sources">
+  <li><code>docs/dispatch.md</code></li>
+  <li><code>src/kernels/store42.s</code></li>
+  <li><code>tools/asm</code></li>
+  <li><code>hsa.h</code></li>
+  <li><code>AMDHSAKernelDescriptor.h</code></li>
+</ul>
+
+<footer class="site-foot">
+<p>redbluegreen wiki. <span class="badge">unit 4</span></p>
+</footer>
+
+</div>
+</body>
+</html>
