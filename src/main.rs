@@ -14,7 +14,8 @@ fn usage() -> ! {
     eprintln!("        | rbg queue [--cwsr-short]");
     eprintln!("        | rbg dispatch [--no-doorbell]");
     eprintln!("        | rbg add N [--fine] [--reps R] [--wg W] [--kernel K]");
-    eprintln!("  queue, dispatch and add also take --debug");
+    eprintln!("        | rbg matmul M N K [--reps R] [--wait S]");
+    eprintln!("  queue, dispatch, add and matmul also take --debug");
     std::process::exit(2);
 }
 
@@ -27,6 +28,7 @@ fn main() {
             | Some("queue")
             | Some("dispatch")
             | Some("add")
+            | Some("matmul")
     );
     if !known {
         usage();
@@ -37,6 +39,7 @@ fn main() {
         Some("queue") => run_queue(&args),
         Some("dispatch") => run_dispatch(&args),
         Some("add") => run_add(&args),
+        Some("matmul") => run_matmul(&args),
         _ => unreachable!("checked above"),
     };
     if let Err(e) = result {
@@ -442,4 +445,197 @@ fn run_add(args: &[String]) -> kfd::Result<()> {
             Err(kfd::Error::other("verify", &format!("first bad index {i}")))
         }
     }
+}
+
+/// Parse `matmul M N K [--reps R]`. The kernarg byte offsets
+/// are u32, so every buffer stays under 4 GiB: M, N, K are
+/// 1 to 8192.
+fn matmul_args(args: &[String]) -> kfd::Result<(u32, u32, u32, u32)> {
+    let mut dims = [0u32; 3];
+    let mut pos = 0;
+    let mut reps = 5u32;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--reps" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err(kfd::Error::other(
+                        "matmul",
+                        "--reps takes a value",
+                    ));
+                }
+                reps = args[i]
+                    .parse()
+                    .map_err(|_| kfd::Error::other("matmul", "bad --reps"))?;
+            }
+            // Read by wait_secs; accepted here so it parses.
+            "--wait" => {
+                i += 1; // value read by wait_secs
+            }
+            "--debug" => {}
+            s => {
+                if pos >= 3 {
+                    return Err(kfd::Error::other("matmul", "too many dims"));
+                }
+                dims[pos] = s
+                    .parse()
+                    .map_err(|_| kfd::Error::other("matmul", "bad dim"))?;
+                pos += 1;
+            }
+        }
+        i += 1;
+    }
+    if pos != 3 || reps == 0 || dims.iter().any(|d| *d == 0 || *d > 8192) {
+        return Err(kfd::Error::other(
+            "matmul",
+            "M, N, K must be 1..=8192, reps >= 1",
+        ));
+    }
+    Ok((dims[0], dims[1], dims[2], reps))
+}
+
+fn run_matmul(args: &[String]) -> kfd::Result<()> {
+    let (m, n, k, reps) = matmul_args(args)?;
+    let debug = debug_switch(args);
+    let kfd = open_kfd()?;
+    let node = kfd::find_node()?;
+    let (cwsr_size, cwsr_bo, dbg, ctl) = queue_args(false, &node);
+    let ev = kfd::Event::new(&kfd)?;
+    let ep = error_payload(&kfd)?;
+    let opts = kfd::QueueOpts {
+        event: &ev,
+        error_payload: &ep,
+        verbose: debug,
+    };
+    let mut q =
+        kfd::Queue::new(&kfd, RING_SIZE, cwsr_size, cwsr_bo, dbg, ctl, &opts)?;
+    let kern = kfd::Kernel::new(
+        &kfd,
+        include_bytes!("../kernels/matmul.kd"),
+        include_bytes!("../kernels/matmul.text"),
+    )?;
+
+    // Rule 4, docs/lessons.md: every GPU allocation, data and
+    // signals, happens once here, before any dispatch.
+    let flags = kfd::ALLOC_GTT | kfd::ALLOC_WRITABLE;
+    let round = |bytes: u64| (bytes + 4095) & !4095;
+    let a_len = (m as u64 * k as u64) as usize;
+    let b_len = (k as u64 * n as u64) as usize;
+    let c_len = (m as u64 * n as u64) as usize;
+    let mut a = kfd::Buffer::new(&kfd, round(a_len as u64 * 4), flags)?;
+    let mut b = kfd::Buffer::new(&kfd, round(b_len as u64 * 4), flags)?;
+    let mut c = kfd::Buffer::new(&kfd, round(c_len as u64 * 4), flags)?;
+    let signals = (0..reps)
+        .map(|_| kfd::Signal::new(&kfd))
+        .collect::<kfd::Result<Vec<_>>>()?;
+
+    // Every value is a small integer, so the f32 result is
+    // exact and the check is ==.
+    for (i, x) in a.as_slice_mut::<f32>()[..a_len].iter_mut().enumerate() {
+        *x = (i % 7) as f32 - 3.0;
+    }
+    for (i, x) in b.as_slice_mut::<f32>()[..b_len].iter_mut().enumerate() {
+        *x = (i % 5) as f32 - 2.0;
+    }
+    for x in c.as_slice_mut::<u32>()[..c_len].iter_mut() {
+        *x = 0;
+    }
+
+    // kernarg, 40 bytes: a u64 @0, b u64 @8, c u64 @16, m u32
+    // @24, n u32 @28, k u32 @32.
+    let ka = kfd::ALLOC_GTT | kfd::ALLOC_WRITABLE | kfd::ALLOC_COHERENT;
+    let mut kernarg = kfd::Buffer::new(&kfd, 4096, ka)?;
+    let kb = kernarg.as_slice_mut::<u8>();
+    kb[0..8].copy_from_slice(&(a.va as u64).to_le_bytes());
+    kb[8..16].copy_from_slice(&(b.va as u64).to_le_bytes());
+    kb[16..24].copy_from_slice(&(c.va as u64).to_le_bytes());
+    kb[24..28].copy_from_slice(&m.to_le_bytes());
+    kb[28..32].copy_from_slice(&n.to_le_bytes());
+    kb[32..36].copy_from_slice(&k.to_le_bytes());
+
+    // The 64-byte packet: setup 2, workgroup 256,1,1, grid
+    // ((N + 255) / 256) * 256, M, 1.
+    let grid_x = (n as u64).div_ceil(256) * 256;
+    let mut p = [0u8; 64];
+    p[0..2].copy_from_slice(&0x1502u16.to_le_bytes()); // header
+    p[2..4].copy_from_slice(&2u16.to_le_bytes()); // setup, 2 dims
+    p[4..6].copy_from_slice(&256u16.to_le_bytes()); // workgroup x
+    p[6..8].copy_from_slice(&1u16.to_le_bytes()); // workgroup y
+    p[8..10].copy_from_slice(&1u16.to_le_bytes()); // workgroup z
+    p[12..16].copy_from_slice(&(grid_x as u32).to_le_bytes()); // grid x
+    p[16..20].copy_from_slice(&m.to_le_bytes()); // grid y
+    p[20..24].copy_from_slice(&1u32.to_le_bytes()); // grid z
+    p[32..40].copy_from_slice(&kern.object().to_le_bytes());
+    p[40..48].copy_from_slice(&(kernarg.va as u64).to_le_bytes());
+
+    let mut best: u64 = u64::MAX;
+    for rep in 1..=reps {
+        // The buffers are reused; the signals were allocated
+        // once, one per rep, before any dispatch.
+        let i = (rep - 1) as usize;
+        p[56..64].copy_from_slice(&signals[i].va().to_le_bytes());
+        let start = std::time::Instant::now();
+        q.dispatch(&p, true);
+        let sig = &signals[i];
+        if let Err(e) = sig.wait(wait_secs(args)) {
+            // Diagnostics before the process exits into a hung
+            // DESTROY_QUEUE: did the CP retire the packet, and
+            // did the kernel write anything?
+            let rptr = q.read_ptr.as_slice_mut::<u64>()[0];
+            c.remap()?;
+            let c0 = unsafe { std::ptr::read_volatile(c.va as *const u32) };
+            println!(
+                "timeout: rptr {rptr}, signal {}, c[0] bits {c0:#x}",
+                sig.value()
+            );
+            return Err(e);
+        }
+        let us = start.elapsed().as_micros() as u64;
+        println!("rep {rep}: {us} us");
+        best = best.min(us);
+    }
+    // 2 * M * N * K flops, T in us: GFLOP/s = 2 * M * N * K /
+    // T / 1000.
+    let gfl = 2.0 * m as f64 * n as f64 * k as f64 / (best as f64 * 1e-6) / 1e9;
+    println!("best: {best} us, GFLOP/s: {gfl:.2}");
+
+    // Take a fresh host view of c. Check every element when
+    // M * N * K <= 2^30, else 64 rows spread evenly over M.
+    c.remap()?;
+    let full = m as u64 * n as u64 * k as u64 <= (1u64 << 30);
+    let rows: Vec<usize> = if full {
+        (0..m as usize).collect()
+    } else {
+        (0..64usize).map(|i| i * m as usize / 64).collect()
+    };
+    let a_val = |r: usize, t: usize| -> f32 {
+        let i = (r as u64 * k as u64 + t as u64) % 7;
+        i as f32 - 3.0
+    };
+    let b_val = |t: usize, col: usize| -> f32 {
+        let i = (t as u64 * n as u64 + col as u64) % 5;
+        i as f32 - 2.0
+    };
+    let mut checked = 0usize;
+    for &row in &rows {
+        for col in 0..n as usize {
+            let mut expect = 0.0f32;
+            for t in 0..k as usize {
+                expect += a_val(row, t) * b_val(t, col);
+            }
+            let off = (row * n as usize + col) * 4;
+            let bits =
+                unsafe { std::ptr::read_volatile(c.va.add(off) as *const u32) };
+            if f32::from_bits(bits) != expect {
+                return Err(kfd::Error::other(
+                    "verify",
+                    &format!("first bad (row, col): ({row}, {col})"),
+                ));
+            }
+            checked += 1;
+        }
+    }
+    println!("verify: {checked} ok");
+    Ok(())
 }

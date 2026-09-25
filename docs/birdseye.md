@@ -43,11 +43,14 @@ both down, and fill the CWSR header before CREATE_QUEUE (unit
 5b), and can dispatch a kernel (kernels/store42, built by
 `tools/asm` from src/kernels/) and wait on its signal, and can run
 `rbg add N` to add two float buffers with kernels/vadd, time it,
-and verify every element on the CPU. Beyond it, the repo holds
-docs, `tools/doclint`, `tools/asm`, `tools/drive`.
+and verify every element on the CPU, and can run
+`rbg matmul M N K` to multiply two float matrices with
+kernels/matmul, time it in GFLOP/s, and verify on the CPU.
+Beyond it, the repo holds docs, `tools/doclint`, `tools/asm`,
+`tools/drive`.
 
 ## What next
 
 Read docs/lessons.md first. Then docs/floor.md for the interface,
 docs/language.md for the host language, and docs/roadmap.md for the
-first five build units. Units 1 to 4 are done; unit 5 is next.
+first five build units. Units 1 to 6 are done; unit 6b is next.

@@ -56,5 +56,5 @@ its first store, with no fault logged. Data stays coarse.
 
 ## What next
 
-Unit 6: the first matmul, with every buffer allocated once at
-start. Open: 768 MiB of fine data hangs before its first store.
+Unit 6b: the tiled matmul. The naive one measures 331 GFLOP/s at
+1024 and 122 at 4096. Open: 768 MiB of fine data hangs.
